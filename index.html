@@ -6,312 +6,203 @@
   <title>粒子圣诞树 · 手势交互</title>
   <style>
     :root{
-      --gold:#f7d46b;
-      --gold2:#ffd36a;
+      --gold:#ffd36a; --gold2:#ffefb0;
       --red:#ff2a2a;
-      --green:#0b2b1e;
-      --warm:#ffddb0;
-      --panel: rgba(12, 16, 18, .38);
-      --panel2: rgba(12,16,18,.55);
-      --stroke: rgba(255,255,255,.22);
+      --panel: rgba(0,0,0,.38);
+      --stroke: rgba(255,255,255,.18);
     }
-    html,body{height:100%;margin:0;background:#07090b;overflow:hidden;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;}
-    #app{position:fixed;inset:0;touch-action:none;}
-    canvas{display:block;width:100%;height:100%;}
+    html,body{margin:0;height:100%;overflow:hidden;background:#07070a;font-family:system-ui,-apple-system,Segoe UI,Roboto,"PingFang SC","Microsoft YaHei",Arial;}
+    #app{position:fixed;inset:0;}
+    canvas{display:block;width:100%;height:100%;touch-action:none;}
 
-    /* 顶部状态条 */
+    /* 顶部面板 */
     #hud{
-      position:fixed; left:12px; top:12px;
-      display:flex; flex-direction:column; gap:10px;
-      z-index:10; max-width:min(520px, calc(100% - 24px));
-      pointer-events:none;
-    }
-    .row{
-      pointer-events:auto;
-      background:var(--panel);
+      position:fixed; left:12px; top:12px; z-index:20;
+      width:min(540px, calc(100vw - 24px));
+      color:#fff;
+      background:linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.04));
       border:1px solid var(--stroke);
       backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
-      border-radius:14px;
-      padding:10px 12px;
-      color:#fff;
-      box-shadow:0 12px 30px rgba(0,0,0,.35);
+      border-radius:16px;
+      padding:12px 12px 10px;
+      box-shadow:0 14px 38px rgba(0,0,0,.42);
+      pointer-events:auto;
     }
-    .row h1{
-      margin:0 0 6px 0; font-size:14px; font-weight:700; letter-spacing:.2px;
-      display:flex; align-items:center; gap:8px;
-    }
-    .row p{margin:6px 0 0 0; font-size:12px; line-height:1.45; opacity:.92}
-    .kv{display:flex; flex-wrap:wrap; gap:10px; font-size:12px; opacity:.95}
-    .badge{
-      display:inline-flex; align-items:center; gap:6px;
-      padding:6px 10px; border-radius:999px;
-      background:rgba(255,255,255,.10); border:1px solid rgba(255,255,255,.14);
-    }
-    .dot{width:9px;height:9px;border-radius:99px;background:#666; box-shadow:0 0 10px rgba(255,255,255,.2)}
-    .dot.on{background:#6cff9b; box-shadow:0 0 14px rgba(108,255,155,.65)}
-    .dot.warn{background:#ffd36a; box-shadow:0 0 14px rgba(255,211,106,.55)}
-    .dot.off{background:#888; box-shadow:0 0 10px rgba(255,255,255,.18)}
+    #hud h1{margin:0 0 8px;font-size:14px;font-weight:900;letter-spacing:.3px}
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
     .btn{
-      pointer-events:auto;
-      border:none; cursor:pointer;
-      border-radius:14px;
-      padding:10px 12px;
-      font-weight:800;
-      color:#1c1406;
-      background:linear-gradient(180deg, #ffe39b, #f7c857);
-      box-shadow:0 16px 40px rgba(247,200,87,.22), 0 10px 22px rgba(0,0,0,.25);
-    }
-    .btn:active{transform:translateY(1px)}
-    .btn.small{padding:8px 10px;border-radius:12px;font-weight:800}
-    .btn.ghost{
-      color:#fff; background:rgba(255,255,255,.10);
+      cursor:pointer; user-select:none;
       border:1px solid rgba(255,255,255,.16);
-      box-shadow:none;
+      background:rgba(0,0,0,.22);
+      color:#fff;
+      padding:10px 12px;border-radius:14px;font-weight:900;
+      display:inline-flex;align-items:center;gap:8px;
     }
+    .btn.primary{
+      color:#1b1106;
+      background:linear-gradient(180deg, #ffe39b, #f7c857);
+      border:none;
+      box-shadow:0 14px 32px rgba(247,200,87,.18);
+    }
+    .btn:active{transform:scale(.985)}
+    .hint{margin-top:8px;font-size:12px;line-height:1.45;opacity:.92}
+    .badge{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.14);font-size:12px}
+    .dot{width:9px;height:9px;border-radius:99px;background:#888;box-shadow:0 0 10px rgba(255,255,255,.18)}
+    .dot.on{background:#6cff9b;box-shadow:0 0 14px rgba(108,255,155,.65)}
+    .dot.warn{background:#ffd36a;box-shadow:0 0 14px rgba(255,211,106,.55)}
 
-    /* 上传控件 */
-    #uploader{
-      display:flex; gap:10px; align-items:center; flex-wrap:wrap;
-      margin-top:8px;
-    }
-    #pickPhotos{
-      pointer-events:auto;
-      display:inline-flex; align-items:center; justify-content:center;
-      padding:10px 12px; border-radius:14px;
-      background:rgba(255,255,255,.12);
-      border:1px solid rgba(255,255,255,.18);
-      color:#fff; font-weight:800; cursor:pointer;
-    }
-    #fileHint{font-size:12px; opacity:.9}
-    #thumbs{
-      display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;
-    }
-    .thumb{
-      width:40px; height:40px; border-radius:10px;
-      border:1px solid rgba(255,255,255,.18);
-      background:rgba(0,0,0,.25);
-      overflow:hidden;
-    }
+    /* 上传区 */
+    #fileInput{display:none}
+    #thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+    .thumb{width:42px;height:42px;border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.22)}
     .thumb img{width:100%;height:100%;object-fit:cover;display:block}
 
-    /* 开始体验大按钮 */
+    /* 开始体验 */
     #startOverlay{
-      position:fixed; inset:0; z-index:20;
+      position:fixed; inset:0; z-index:50;
       display:grid; place-items:center;
       background:
-        radial-gradient(1200px 700px at 50% 35%, rgba(255,205,140,.18), transparent 55%),
-        radial-gradient(900px 600px at 50% 60%, rgba(255,210,120,.10), transparent 55%),
-        linear-gradient(180deg, #050608, #090b10 55%, #050608);
+        radial-gradient(1000px 700px at 50% 40%, rgba(255,211,106,.16), transparent 60%),
+        radial-gradient(900px 650px at 50% 65%, rgba(255,42,42,.08), transparent 62%),
+        linear-gradient(180deg, rgba(5,6,9,.94), rgba(0,0,0,.94));
     }
     #startCard{
-      width:min(560px, calc(100% - 26px));
+      width:min(560px, calc(100vw - 28px));
       border-radius:22px;
+      padding:18px 16px 14px;
       border:1px solid rgba(255,255,255,.14);
-      background:rgba(10,12,14,.50);
-      backdrop-filter: blur(14px);
-      -webkit-backdrop-filter: blur(14px);
-      box-shadow:0 28px 80px rgba(0,0,0,.55);
-      padding:18px 18px 16px;
-      color:#fff;
-      text-align:center;
+      background:linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.04));
+      backdrop-filter: blur(12px);
+      box-shadow:0 24px 70px rgba(0,0,0,.55);
+      text-align:center;color:#fff;
     }
-    #startCard h2{margin:4px 0 10px;font-size:18px;letter-spacing:.3px}
-    #startCard p{margin:0 0 14px;opacity:.92;font-size:13px;line-height:1.55}
+    #startCard h2{margin:4px 0 10px;font-size:18px;font-weight:950;letter-spacing:.5px}
+    #startCard p{margin:0 0 14px;font-size:13px;opacity:.9;line-height:1.55}
     #startBig{
       width:100%;
-      padding:16px 14px;
+      border:none;
       border-radius:18px;
-      font-size:18px;
-      font-weight:900;
-      letter-spacing:.6px;
-      color:#1c1406;
+      padding:16px 14px;
+      font-size:18px;font-weight:950;letter-spacing:.6px;
+      color:#1b1106;
       background:linear-gradient(180deg, #ffe7a8, #f6c24e);
-      border:none; cursor:pointer;
-      box-shadow:0 22px 60px rgba(246,194,78,.25), 0 12px 24px rgba(0,0,0,.25);
+      box-shadow:0 20px 60px rgba(246,194,78,.22), inset 0 1px 0 rgba(255,255,255,.55);
+      cursor:pointer;
     }
-    #startBig:active{transform:translateY(1px)}
-    #startNote{margin-top:12px; font-size:12px; opacity:.88}
-    #startNote b{color:#ffd36a}
+    #startBig:active{transform:scale(.99)}
+    #startStatus{margin-top:10px;font-size:12px;opacity:.92;min-height:22px;white-space:pre-line}
 
-    /* 照片放大态（DOM 叠层，确保正面完整+高清） */
-    #photoStage{
-      position:fixed; inset:0; z-index:30;
-      display:none;
-      background: rgba(0,0,0,.35);
-      backdrop-filter: blur(6px);
-      -webkit-backdrop-filter: blur(6px);
-      align-items:center; justify-content:center;
-      padding:16px;
-    }
-    #photoWrap{
-      width:min(880px, calc(100% - 20px));
-      max-height:min(82vh, 820px);
-      border-radius:22px;
-      border:1px solid rgba(255,255,255,.22);
-      background:rgba(15,16,18,.55);
-      box-shadow:0 30px 90px rgba(0,0,0,.62);
-      overflow:hidden;
-      position:relative;
-    }
-    #photoWrap::before{
-      content:"";
-      position:absolute; inset:-40px;
-      background: radial-gradient(380px 220px at 35% 18%, rgba(255,210,120,.35), transparent 60%),
-                  radial-gradient(420px 240px at 65% 22%, rgba(255,80,80,.20), transparent 60%),
-                  radial-gradient(520px 380px at 50% 90%, rgba(120,255,190,.12), transparent 62%);
-      filter: blur(18px);
-      opacity:.7;
-    }
-    #photoImg{
-      position:relative;
-      width:100%;
-      height:100%;
-      max-height:82vh;
-      object-fit:contain;
-      display:block;
-      background:rgba(0,0,0,.18);
-    }
-    #photoTip{
-      position:absolute; left:14px; bottom:12px; right:14px;
-      color:#fff; font-size:12px; opacity:.9;
-      text-align:center;
-      pointer-events:none;
-      text-shadow:0 2px 10px rgba(0,0,0,.55);
-    }
+    /* 放大照片：保证正面完整高清 */
+    #photoStage{position:fixed;inset:0;z-index:40;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(0,0,0,.35);backdrop-filter: blur(8px);}
+    #photoWrap{width:min(900px, 92vw);max-height:80vh;border-radius:20px;overflow:hidden;border:1px solid rgba(255,255,255,.18);background:rgba(0,0,0,.25);box-shadow:0 26px 90px rgba(0,0,0,.62)}
+    #photoImg{width:100%;height:100%;max-height:80vh;object-fit:contain;display:block;background:rgba(0,0,0,.28)}
+    body.photo-mode canvas{filter: blur(9px) brightness(1.08) saturate(1.12); transition:filter .18s ease;}
+    body:not(.photo-mode) canvas{filter:none;transition:filter .18s ease;}
 
-    /* 错误提示 */
-    #toast{
-      position:fixed; left:50%; bottom:18px; transform:translateX(-50%);
-      z-index:40;
-      display:none;
-      padding:10px 12px;
-      border-radius:14px;
-      background:rgba(0,0,0,.62);
-      color:#fff;
-      border:1px solid rgba(255,255,255,.16);
-      font-size:12px;
-      max-width:min(720px, calc(100% - 20px));
-      text-align:center;
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
-    }
-
-    /* 隐藏视频 */
-    #video{
-      position:fixed; right:10px; bottom:10px; width:1px; height:1px; opacity:0;
-      pointer-events:none;
-    }
+    /* Toast */
+    #toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:60;display:none;
+      padding:10px 12px;border-radius:14px;background:rgba(0,0,0,.62);border:1px solid rgba(255,255,255,.16);
+      color:#fff;font-size:12px;max-width:min(720px, calc(100vw - 24px));text-align:center;backdrop-filter: blur(8px);}
+    #video{position:fixed;left:-9999px;top:-9999px;width:2px;height:2px;opacity:0;pointer-events:none;}
   </style>
 </head>
+
 <body>
-  <div id="app"></div>
-
-  <div id="hud">
-    <div class="row">
-      <h1>🎄 粒子圣诞树 · 手势交互</h1>
-      <div class="kv">
-        <span class="badge"><span id="camDot" class="dot off"></span>摄像头：<b id="camTxt">关闭</b></span>
-        <span class="badge"><span id="bgmDot" class="dot off"></span>音乐：<b id="bgmTxt">关闭</b></span>
-        <span class="badge"><span id="handDot" class="dot warn"></span>手势：<b id="handTxt">待启动</b></span>
-      </div>
-
-      <div id="uploader">
-        <label id="pickPhotos" for="photoInput">⬆️ 上传照片(≤7)</label>
-        <span id="fileHint">未选择文件</span>
-        <button id="replayBtn" class="btn small ghost" type="button">重新播放音乐</button>
-        <button id="recamBtn" class="btn small ghost" type="button">重新开启摄像头</button>
-      </div>
-      <input id="photoInput" type="file" accept="image/*" multiple style="display:none" />
-      <div id="thumbs"></div>
-
-      <p style="margin-top:10px">
-        手势：握拳→合拢；五指张开→散开；散开时移动手→旋转视角（幅度跟随）；<br/>
-        <b>拇指+食指捏合</b>→抓取放大照片，分开→回原位。<br/>
-        （若手势库加载失败，也可用 <b>手指/鼠标拖动</b> 旋转视角）
-      </p>
-    </div>
-  </div>
-
+  <!-- 兜底：如果脚本没跑，按钮也会弹窗说明 -->
   <div id="startOverlay">
     <div id="startCard">
       <h2>✨ 圣诞树 · 开始体验</h2>
-      <p>点一次就会尝试播放圣诞 BGM，并请求摄像头权限用于手势交互。<br/>（不想开摄像头也可以只看视觉效果）</p>
-      <button id="startBig">开始体验（点我）</button>
-      <div id="startNote">
-        如果你在微信/QQ内打开：请点右上角 <b>用浏览器打开</b>（内置浏览器常拦摄像头/音频/外链资源）。
-      </div>
+      <p>点一次：尝试播放音乐 + 提示开启摄像头（用于手势交互）。</p>
+      <button id="startBig"
+        onclick="(window.__startExperience && window.__startExperience()) || alert('脚本未加载：请确认 libs/three.min.js 存在且文件名正确，然后刷新链接（加 ?v=999）');">
+        开始体验（点我）
+      </button>
+      <div id="startStatus">等待启动…</div>
+    </div>
+  </div>
+
+  <div id="app"></div>
+
+  <div id="hud">
+    <h1>🎄 粒子圣诞树 · 手势交互</h1>
+    <div class="row" style="margin-bottom:6px">
+      <span class="badge"><span id="dotThree" class="dot warn"></span>Three：<b id="txtThree">检测中</b></span>
+      <span class="badge"><span id="dotCam" class="dot warn"></span>摄像头：<b id="txtCam">未开启</b></span>
+      <span class="badge"><span id="dotBgm" class="dot warn"></span>音乐：<b id="txtBgm">未开启</b></span>
+      <span class="badge"><span id="dotHand" class="dot warn"></span>手势：<b id="txtHand">待启动</b></span>
+    </div>
+
+    <div class="row">
+      <button class="btn primary" id="btnCompact" type="button">合拢态</button>
+      <button class="btn primary" id="btnScatter" type="button">散开态</button>
+      <button class="btn" id="btnReplay" type="button">重新播放音乐</button>
+      <button class="btn" id="btnRecam" type="button">重新开启摄像头</button>
+      <button class="btn" id="btnPick" type="button">上传照片(≤7)</button>
+      <input id="fileInput" type="file" accept="image/*" multiple />
+      <span id="fileHint" style="font-size:12px;opacity:.9">未选择文件</span>
+    </div>
+
+    <div id="thumbs"></div>
+
+    <div class="hint">
+      手势：握拳→合拢；五指张开→散开；散开时移动手→旋转视角（幅度跟随）。<br/>
+      <b>拇指+食指捏合</b>→抓取放大照片，分开→回原位。<br/>
+      若手势库加载失败：仍可用手指/鼠标拖动旋转视角。
     </div>
   </div>
 
   <div id="photoStage">
-    <div id="photoWrap">
-      <img id="photoImg" alt="photo" />
-      <div id="photoTip">捏合保持放大 · 松开回原位</div>
-    </div>
+    <div id="photoWrap"><img id="photoImg" alt="photo" /></div>
   </div>
 
   <div id="toast"></div>
   <video id="video" playsinline></video>
 
   <script>
+    // 永远不报错的“启动入口”占位（后面会覆盖为真正的函数）
+    window.__startExperience = function(){
+      alert("正在加载脚本，请稍等…如果一直没反应，请刷新链接（加 ?v=999）");
+    };
+  </script>
+
+  <script>
   (function(){
     const $ = (id)=>document.getElementById(id);
-
-    const toast = $("toast");
-    function showToast(msg, ms=2400){
-      toast.textContent = msg;
-      toast.style.display="block";
-      clearTimeout(showToast._t);
-      showToast._t = setTimeout(()=> toast.style.display="none", ms);
+    const toastEl = $("toast");
+    function toast(msg, ms=2600){
+      toastEl.textContent = msg;
+      toastEl.style.display="block";
+      clearTimeout(toast._t);
+      toast._t=setTimeout(()=>toastEl.style.display="none", ms);
+    }
+    function setDot(id, state){
+      const el=$(id);
+      el.className = "dot " + (state==="on"?"on":state==="warn"?"warn":"");
     }
 
-    // ========= 0) 资源加载：Three.js 优先本地 =========
-    function loadScript(url){
-      return new Promise((resolve, reject)=>{
-        const s=document.createElement("script");
-        s.src=url;
-        s.onload=()=>resolve(url);
-        s.onerror=()=>reject(new Error("load failed: "+url));
-        document.head.appendChild(s);
-      });
-    }
+    const MAX_PHOTOS=7;
+    const photoUrls=[];
+    const photoPlanes=[];
+    let selectedPlane=null;
+    let pinchHolding=false;
 
-    async function ensureThree(){
-      const candidates = [
-        "./libs/three.min.js", // ✅ 你的仓库本地
-        "https://cdnjs.cloudflare.com/ajax/libs/three.js/r155/three.min.js",
-        "https://unpkg.com/three@0.155.0/build/three.min.js"
-      ];
-      for (const url of candidates){
-        try{
-          await loadScript(url);
-          if (window.THREE) return url;
-        }catch(e){}
-      }
-      throw new Error("Three.js 未加载成功（请把 three.min.js 放到仓库 /libs 目录）");
-    }
-
-    // ========= 1) 音乐：优先本地 Jingle Bell Rock，兜底公开BGM =========
+    // 音乐：版权歌不提供直链 -> 你上传 assets/jingle-bell-rock.mp3 即可播放
     const AUDIO_SOURCES = [
-      "./assets/jingle-bell-rock.mp3", // 你想要的“经典Jingle Bell Rock”：请放到仓库 assets
-      // 兜底：公开可用（CC BY 3.0，Kevin MacLeod 的圣诞曲目）
-      "https://upload.wikimedia.org/wikipedia/commons/8/8a/Jingle_Bells_%28Calm%29_%28ISRC_USUAN1100188%29.mp3"
+      "./assets/jingle-bell-rock.mp3", // 你自己上传（想要“Jingle Bell Rock”就放这个）
+      // 兜底公开音乐（确保手机端也有声）
+      "https://upload.wikimedia.org/wikipedia/commons/3/32/Carol_of_the_Bells_-_Concert_Band_-_United_States_Air_Force_Band_of_the_Rockies.mp3"
     ];
-
     let audioEl=null, audioCtx=null, gainNode=null;
-    async function tryPlayBGM(){
+    async function playBGM(){
       try{
-        if (!audioEl){
+        if(!audioEl){
           audioEl = new Audio();
           audioEl.loop = true;
           audioEl.preload = "auto";
           audioEl.crossOrigin = "anonymous";
         }
-
-        // WebAudio：更“丝滑”的淡入
-        if (!audioCtx){
-          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if(!audioCtx){
+          audioCtx = new (window.AudioContext||window.webkitAudioContext)();
           const src = audioCtx.createMediaElementSource(audioEl);
           gainNode = audioCtx.createGain();
           gainNode.gain.value = 0.0;
@@ -319,407 +210,336 @@
         }
         await audioCtx.resume();
 
-        // 依次尝试音源
         let ok=false;
-        for (const src of AUDIO_SOURCES){
+        for(const s of AUDIO_SOURCES){
           try{
-            audioEl.src = src;
-            await audioEl.play(); // iOS 必须在用户点击后调用
+            audioEl.src=s;
+            await audioEl.play();
             ok=true;
             break;
           }catch(e){}
         }
-        if (!ok) throw new Error("音乐播放失败（可能被浏览器策略拦截）");
+        if(!ok) throw new Error("音乐播放失败（浏览器策略或网络拦截）");
 
-        // 淡入
-        const target=0.62;
+        const target=0.65;
         const t0=performance.now();
-        const fade= (t)=>{
-          const k=Math.min(1,(t-t0)/1200);
-          gainNode.gain.value = target*(k*k*(3-2*k));
-          if (k<1) requestAnimationFrame(fade);
+        const fade=(t)=>{
+          const p=Math.min(1,(t-t0)/900);
+          const s=p*p*(3-2*p);
+          gainNode.gain.value = target*s;
+          if(p<1) requestAnimationFrame(fade);
         };
         requestAnimationFrame(fade);
 
-        $("bgmDot").className="dot on";
-        $("bgmTxt").textContent="开启";
+        setDot("dotBgm","on"); $("txtBgm").textContent="开启";
         return true;
       }catch(e){
-        $("bgmDot").className="dot warn";
-        $("bgmTxt").textContent="未开启";
-        showToast("音乐没播放出来：请再点一次“重新播放音乐”（或检查是否静音/低电量模式）", 3200);
+        setDot("dotBgm","warn"); $("txtBgm").textContent="未开启";
+        toast("音乐没播放出来：再点一次“重新播放音乐”试试（手机静音也会影响）", 3600);
         return false;
       }
     }
 
-    // ========= 2) 摄像头 =========
-    let mediaStream=null;
-    async function tryOpenCamera(){
+    // 摄像头
+    let stream=null;
+    async function openCamera(){
       try{
-        const video = $("video");
-        if (mediaStream){
-          mediaStream.getTracks().forEach(t=>t.stop());
-          mediaStream=null;
-        }
-        mediaStream = await navigator.mediaDevices.getUserMedia({
-          video:{
-            facingMode:"user",
-            width:{ideal: 1280},
-            height:{ideal: 720}
-          },
+        const video=$("video");
+        if(stream){ try{stream.getTracks().forEach(t=>t.stop());}catch(e){} stream=null; }
+        stream = await navigator.mediaDevices.getUserMedia({
+          video:{ facingMode:"user", width:{ideal:960}, height:{ideal:540} },
           audio:false
         });
-        video.srcObject = mediaStream;
+        video.srcObject=stream;
         await video.play();
-
-        $("camDot").className="dot on";
-        $("camTxt").textContent="开启";
+        setDot("dotCam","on"); $("txtCam").textContent="开启";
         return true;
       }catch(e){
-        $("camDot").className="dot warn";
-        $("camTxt").textContent="未开启";
-        showToast("摄像头开启失败：请用系统浏览器打开并允许权限（微信/QQ内置浏览器常失败）", 3800);
+        setDot("dotCam","warn"); $("txtCam").textContent="未开启";
+        toast("摄像头开启失败：请用系统浏览器打开并允许权限（微信/QQ内置浏览器常失败）", 4200);
         return false;
       }
     }
 
-    // ========= 3) 手势（MediaPipe Hands：可用则启用，不可用则降级触控） =========
-    let hands=null, mpCamera=null;
-    let handReady=false;
-
-    async function loadMediaPipeHands(){
-      // 多个候选源（避免某个CDN挂掉）
+    // 资源加载（Three 本地优先）
+    function loadScript(url){
+      return new Promise((resolve,reject)=>{
+        const s=document.createElement("script");
+        s.src=url;
+        s.onload=()=>resolve(url);
+        s.onerror=()=>reject(new Error("load failed: "+url));
+        document.head.appendChild(s);
+      });
+    }
+    async function ensureThree(){
+      if(window.THREE) return "cached";
       const candidates = [
-        // unpkg 通常比 jsdelivr 更容易通
-        {
-          hands:"https://unpkg.com/@mediapipe/hands/hands.js",
-          cam :"https://unpkg.com/@mediapipe/camera_utils/camera_utils.js",
-          base:"https://unpkg.com/@mediapipe/hands/"
-        },
-        {
-          hands:"https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js",
-          cam :"https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js",
-          base:"https://cdn.jsdelivr.net/npm/@mediapipe/hands/"
-        }
+        "./libs/three.min.js", // ✅ 你的本地
+        "https://cdnjs.cloudflare.com/ajax/libs/three.js/r155/three.min.js",
+        "https://unpkg.com/three@0.155.0/build/three.min.js"
       ];
+      for(const u of candidates){
+        try{
+          await loadScript(u);
+          if(window.THREE) return u;
+        }catch(e){}
+      }
+      throw new Error("Three.js 未加载成功：请确认 /libs/three.min.js 文件名正确");
+    }
 
-      for (const c of candidates){
+    // 手势（可用就启用，不可用就降级为拖动）
+    let hands=null, mpCamera=null, handReady=false;
+    async function loadHands(){
+      // 先尝试 CDN（你如果以后要彻底离线，也可以把 mediapipe 放到 libs 里再改成 local-first）
+      const opts = [
+        {hands:"https://unpkg.com/@mediapipe/hands/hands.js", cam:"https://unpkg.com/@mediapipe/camera_utils/camera_utils.js", base:"https://unpkg.com/@mediapipe/hands/"},
+        {hands:"https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js", cam:"https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js", base:"https://cdn.jsdelivr.net/npm/@mediapipe/hands/"}
+      ];
+      for(const c of opts){
         try{
           await loadScript(c.cam);
           await loadScript(c.hands);
-          if (!window.Hands || !window.Camera) throw new Error("mp objects missing");
-          return c.base;
+          if(window.Hands && window.Camera) return c.base;
         }catch(e){}
       }
       throw new Error("手势库加载失败（网络可能拦截外链）");
     }
 
-    // 手势解析：更清楚 + 防抖
-    const GEST = { NONE:0, FIST:1, OPEN:2, PINCH:3, MOVE:4 };
-    let lastLm=null;
-
+    // 手势判定（更清楚 + 防抖）
+    const GEST={NONE:0,FIST:1,OPEN:2,PINCH:3,MOVE:4};
     function dist(a,b){
       const dx=a.x-b.x, dy=a.y-b.y, dz=(a.z||0)-(b.z||0);
       return Math.hypot(dx,dy,dz);
     }
-    function isFingerExtended(lm, tip, pip){
-      // tip 离 wrist 更远 → 伸直（对不同方向更稳）
-      const wrist=lm[0];
-      return dist(lm[tip], wrist) > dist(lm[pip], wrist) + 0.02;
+    function isExt(lm, tip, pip){
+      const w=lm[0];
+      return dist(lm[tip],w) > dist(lm[pip],w)+0.02;
     }
-    function classifyGesture(lm){
-      const wrist=lm[0];
-      const thumbTip=lm[4], indexTip=lm[8];
-      const pinchD = dist(thumbTip, indexTip);
-
-      // 手掌尺度
+    function classify(lm){
       const palm = dist(lm[0], lm[9]) + 1e-6;
-
-      // PINCH：相对尺度阈值
-      const pinch = pinchD < palm*0.28;
-
-      const iExt = isFingerExtended(lm, 8, 6);
-      const mExt = isFingerExtended(lm,12,10);
-      const rExt = isFingerExtended(lm,16,14);
-      const pExt = isFingerExtended(lm,20,18);
-
-      const open = (iExt && mExt && rExt && pExt) && !pinch;
-      const fist = (!iExt && !mExt && !rExt && !pExt) && !pinch;
-
-      if (pinch) return GEST.PINCH;
-      if (open)  return GEST.OPEN;
-      if (fist)  return GEST.FIST;
+      const pinch = dist(lm[4], lm[8]) < palm*0.28;
+      const i=isExt(lm,8,6), m=isExt(lm,12,10), r=isExt(lm,16,14), p=isExt(lm,20,18);
+      const open = i&&m&&r&&p&&!pinch;
+      const fist = !i&&!m&&!r&&!p&&!pinch;
+      if(pinch) return GEST.PINCH;
+      if(open) return GEST.OPEN;
+      if(fist) return GEST.FIST;
       return GEST.MOVE;
     }
-
-    // 防抖：同一手势连续 N 帧才认定
-    let gestStable=GEST.NONE, gestCount=0;
-    function updateStableGesture(lm){
-      const g=classifyGesture(lm);
-      if (g===gestStable){
-        gestCount = Math.min(30, gestCount+1);
-      }else{
-        gestStable = g;
-        gestCount = 1;
-      }
-      // 需要连续 6 帧（更清楚，不乱跳）
-      return (gestCount>=6) ? gestStable : GEST.NONE;
+    let stable=GEST.NONE, cnt=0;
+    function stableGest(lm){
+      const g=classify(lm);
+      if(g===stable) cnt=Math.min(30,cnt+1);
+      else { stable=g; cnt=1; }
+      return cnt>=6 ? stable : GEST.NONE;
     }
 
-    // ========= 4) Three 场景：写实暖色 + 金红球 + 标准螺旋金线 + 星星 =========
-    let scene, camera, renderer;
-    let root, treeGroup, ornamentsGroup, photosGroup, fogGroup, helixGroup, starMesh;
-    let raycaster, ndc=new THREE.Vector2();
+    // Three 场景（保持你现在“暖金写实”的树风格）
+    let THREE, renderer, scene, camera, root, treeGroup, ornaments, helixGroup, photosGroup, fogGroup, star;
+    let raycaster, ndc;
+    const STATE={COMPACT:0,SCATTER:1,PHOTO:2};
+    let state=STATE.COMPACT, spread=0, targetSpread=0;
 
-    // 状态
-    const STATE = { COMPACT:0, SCATTER:1, PHOTO:2 };
-    let state = STATE.COMPACT;
-    let spread = 0; // 0=合拢 1=散开
-    let targetSpread = 0;
-
-    // 视角控制（手势/拖动都写到同一套）
-    let yaw=0, pitch=0;
-    let yawVel=0, pitchVel=0;
-    let roll=0;
-    let lastHandX=null, lastHandY=null;
-
-    // 拖动（降级触控/鼠标）
-    let dragging=false, lastPX=0, lastPY=0;
-
-    // 照片
-    const MAX_PHOTOS=7;
-    const photoPlanes=[];
-    const photoTargets=[]; // {compact:Vector3, scatter:Vector3, layer:number, angle:number}
-    const photoUrls=[];
-    let selectedPhoto=null;
-    let pinchHolding=false;
+    let yaw=0, pitch=-0.08, yawVel=0, pitchVel=0, roll=0;
+    let dragging=false, lastX=0, lastY=0;
 
     function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
     function smoothstep(t){return t*t*(3-2*t)}
 
-    function makeRadialTexture(colorA, colorB){
-      const c=document.createElement("canvas");
-      c.width=c.height=128;
-      const g=c.getContext("2d");
-      const grd=g.createRadialGradient(64,64,0,64,64,64);
-      grd.addColorStop(0, colorA);
-      grd.addColorStop(1, colorB);
-      g.fillStyle=grd;
-      g.fillRect(0,0,128,128);
-      const tex=new THREE.CanvasTexture(c);
+    function makeRadialTex(c0,c1){
+      const cvs=document.createElement("canvas"); cvs.width=cvs.height=128;
+      const g=cvs.getContext("2d");
+      const rg=g.createRadialGradient(64,64,0,64,64,64);
+      rg.addColorStop(0,c0); rg.addColorStop(1,c1);
+      g.fillStyle=rg; g.fillRect(0,0,128,128);
+      const tex=new THREE.CanvasTexture(cvs);
       tex.needsUpdate=true;
       return tex;
     }
 
+    function setState(s){
+      state=s;
+      if(s===STATE.COMPACT) targetSpread=0;
+      if(s===STATE.SCATTER) targetSpread=1;
+      if(s===STATE.PHOTO) targetSpread=1;
+    }
+
     function buildStar(){
-      // 更明显、角更尖的五角星
-      const shape = new THREE.Shape();
+      const shape=new THREE.Shape();
       const R=1.0, r=0.42;
       const pts=[];
       for(let i=0;i<10;i++){
-        const ang = -Math.PI/2 + i*(Math.PI/5);
-        const rad = (i%2===0)?R:r;
+        const ang=-Math.PI/2 + i*(Math.PI/5);
+        const rad=(i%2===0)?R:r;
         pts.push(new THREE.Vector2(Math.cos(ang)*rad, Math.sin(ang)*rad));
       }
       shape.moveTo(pts[0].x, pts[0].y);
       for(let i=1;i<pts.length;i++) shape.lineTo(pts[i].x, pts[i].y);
       shape.closePath();
-
-      const geo = new THREE.ExtrudeGeometry(shape,{
-        depth:0.22,
-        bevelEnabled:true,
-        bevelThickness:0.08,
-        bevelSize:0.06,
-        bevelSegments:2
-      });
+      const geo=new THREE.ExtrudeGeometry(shape,{depth:0.22, bevelEnabled:true, bevelThickness:0.08, bevelSize:0.06, bevelSegments:2});
       geo.center();
-
-      const mat = new THREE.MeshStandardMaterial({
-        color:0xffc54d, metalness:0.95, roughness:0.18,
-        emissive:0x3b2200, emissiveIntensity:0.55
-      });
-      const m = new THREE.Mesh(geo, mat);
+      const mat=new THREE.MeshStandardMaterial({color:0xffc54d, metalness:0.95, roughness:0.18, emissive:0x3b2200, emissiveIntensity:0.55});
+      const m=new THREE.Mesh(geo,mat);
       m.scale.setScalar(0.55);
       return m;
     }
 
     function makeHelixCurve(height, radius, turns){
       const pts=[];
-      const seg=220;
+      const seg=240;
       for(let i=0;i<=seg;i++){
         const t=i/seg;
-        const ang = t*turns*Math.PI*2;
-        const y = (t-0.5)*height;
-        const r = radius*(0.92 - 0.18*t);
+        const ang=t*turns*Math.PI*2;
+        const y=(t-0.5)*height;
+        const r=radius*(0.96 - 0.22*t);
         pts.push(new THREE.Vector3(Math.cos(ang)*r, y, Math.sin(ang)*r));
       }
       return new THREE.CatmullRomCurve3(pts);
     }
 
+    function applyResponsive(){
+      const w=innerWidth, h=innerHeight;
+      const short=Math.min(w,h);
+      const phone = short<520;
+      camera.fov = phone ? 58 : 52;
+      camera.aspect = w/h;
+      camera.updateProjectionMatrix();
+      renderer.setPixelRatio(Math.min(devicePixelRatio||1, phone?1.6:2));
+      renderer.setSize(w,h);
+
+      const scale = clamp(short/820, 0.78, 1.18);
+      root.scale.setScalar(scale);
+    }
+
     function buildScene(){
-      scene = new THREE.Scene();
+      const app=document.getElementById("app");
+      app.innerHTML="";
 
-      // 暖色电影感背景（不用后处理也能暖）
-      scene.fog = new THREE.FogExp2(0x07090b, 0.035);
+      scene=new THREE.Scene();
+      scene.fog=new THREE.FogExp2(0x07070a, 0.035);
 
-      camera = new THREE.PerspectiveCamera(52, innerWidth/innerHeight, 0.05, 80);
+      camera=new THREE.PerspectiveCamera(52, innerWidth/innerHeight, 0.05, 80);
       camera.position.set(0, 1.15, 5.2);
 
-      renderer = new THREE.WebGLRenderer({antialias:true, alpha:false});
-      renderer.setSize(innerWidth, innerHeight);
-      renderer.setPixelRatio(Math.min(devicePixelRatio||1, 2));
+      renderer=new THREE.WebGLRenderer({antialias:true, alpha:false, powerPreference:"high-performance"});
       renderer.outputColorSpace = THREE.SRGBColorSpace;
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
-      renderer.toneMappingExposure = 1.25; // ✅ 亮一些、暖一些
+      renderer.toneMappingExposure = 1.25; // 更亮更暖
+      app.appendChild(renderer.domElement);
 
-      $("app").appendChild(renderer.domElement);
+      raycaster=new THREE.Raycaster();
+      ndc=new THREE.Vector2();
 
-      raycaster = new THREE.Raycaster();
+      // 光
+      scene.add(new THREE.AmbientLight(0xffe2bf, 0.62));
+      const key=new THREE.DirectionalLight(0xfff0d2, 0.85); key.position.set(2.6,4.0,2.0); scene.add(key);
+      const fill=new THREE.PointLight(0xffcc88, 1.2, 25, 2); fill.position.set(-2.5,2.0,3.0); scene.add(fill);
+      const rim=new THREE.PointLight(0xffd36a, 0.9, 25, 2); rim.position.set(2.8,1.2,-3.2); scene.add(rim);
 
-      root = new THREE.Group();
+      root=new THREE.Group();
       scene.add(root);
 
-      // 灯光：暖色主调 + 金色高光
-      const amb = new THREE.AmbientLight(0xffe2bf, 0.62);
-      scene.add(amb);
+      treeGroup=new THREE.Group();
+      ornaments=new THREE.Group();
+      helixGroup=new THREE.Group();
+      photosGroup=new THREE.Group();
+      fogGroup=new THREE.Group();
+      root.add(treeGroup, helixGroup, ornaments, photosGroup, fogGroup);
 
-      const key = new THREE.DirectionalLight(0xfff0d2, 0.85);
-      key.position.set(2.6, 4.0, 2.0);
-      scene.add(key);
-
-      const fill = new THREE.PointLight(0xffcc88, 1.2, 25, 2);
-      fill.position.set(-2.5, 2.0, 3.0);
-      scene.add(fill);
-
-      const rim = new THREE.PointLight(0xffd36a, 0.9, 25, 2);
-      rim.position.set(2.8, 1.2, -3.2);
-      scene.add(rim);
-
-      // ===== 树体：分枝层级粒子 + 体积光雾 =====
-      treeGroup = new THREE.Group();
-      ornamentsGroup = new THREE.Group();
-      photosGroup = new THREE.Group();
-      fogGroup = new THREE.Group();
-      helixGroup = new THREE.Group();
-      root.add(treeGroup, helixGroup, ornamentsGroup, photosGroup, fogGroup);
-
-      // 分枝粒子（偏哑光绿）
-      const branchPoints=[];
+      // 分枝点云
+      const pts=[];
       function addBranch(level, start, dir, len){
-        const seg = 18;
+        const seg=18;
         for(let i=0;i<=seg;i++){
           const t=i/seg;
-          const p = start.clone().add(dir.clone().multiplyScalar(len*t));
-          // 让枝叶有体积：在枝周围抖动
-          const jitter = 0.06 + 0.10*(1-t) + 0.04*level;
+          const p=start.clone().add(dir.clone().multiplyScalar(len*t));
+          const jitter=0.06 + 0.10*(1-t) + 0.04*level;
           p.x += (Math.random()-0.5)*jitter;
           p.y += (Math.random()-0.5)*jitter*0.45;
           p.z += (Math.random()-0.5)*jitter;
-          branchPoints.push(p);
+          pts.push(p);
         }
         if(level<=0) return;
-        const childN = 2 + (Math.random()<0.35 ? 1 : 0);
+        const childN=2 + (Math.random()<0.35 ? 1 : 0);
         for(let k=0;k<childN;k++){
-          const nd = dir.clone();
+          const nd=dir.clone();
           nd.x += (Math.random()-0.5)*0.9;
           nd.y += 0.75 + Math.random()*0.55;
           nd.z += (Math.random()-0.5)*0.9;
           nd.normalize();
-          const nl = len*(0.55 + Math.random()*0.18);
+          const nl=len*(0.55 + Math.random()*0.18);
           addBranch(level-1, start.clone().add(dir.clone().multiplyScalar(len*(0.55+Math.random()*0.25))), nd, nl);
         }
       }
-      // 主干 + 分枝
       addBranch(3, new THREE.Vector3(0,-1.25,0), new THREE.Vector3(0,1,0), 2.6);
 
-      const leafGeom = new THREE.BufferGeometry().setFromPoints(branchPoints);
-      const leafMat = new THREE.PointsMaterial({
-        color:0x1c6f4a,
-        size:0.035,
-        transparent:true,
-        opacity:0.82,
-        depthWrite:false,
-        blending:THREE.AdditiveBlending
+      const leafGeom=new THREE.BufferGeometry().setFromPoints(pts);
+      const leafMat=new THREE.PointsMaterial({
+        color:0x1c6f4a, size:0.035, transparent:true, opacity:0.82,
+        depthWrite:false, blending:THREE.AdditiveBlending
       });
-      const leafPts = new THREE.Points(leafGeom, leafMat);
-      treeGroup.add(leafPts);
+      treeGroup.add(new THREE.Points(leafGeom, leafMat));
 
-      // 体积光雾（暖金+微绿）
-      const fogTex = makeRadialTexture("rgba(255,220,170,.52)", "rgba(10,12,14,0)");
-      const fogCount = 180;
-      for(let i=0;i<fogCount;i++){
-        const sp = new THREE.Sprite(new THREE.SpriteMaterial({
-          map:fogTex,
-          color: (Math.random()<0.6)?0xffe0b8:0xa8ffd0,
-          transparent:true,
-          opacity: 0.13 + Math.random()*0.11,
-          depthWrite:false,
-          blending:THREE.AdditiveBlending
+      // 光雾
+      const fogTex=makeRadialTex("rgba(255,220,170,.52)","rgba(10,12,14,0)");
+      for(let i=0;i<170;i++){
+        const sp=new THREE.Sprite(new THREE.SpriteMaterial({
+          map:fogTex, color:(Math.random()<0.6)?0xffe0b8:0xa8ffd0,
+          transparent:true, opacity:0.12+Math.random()*0.10,
+          depthWrite:false, blending:THREE.AdditiveBlending
         }));
-        const y = -1.15 + Math.random()*3.0;
-        const r = (1.0 - (y+1.15)/3.0) * (0.95 + Math.random()*0.35);
-        const a = Math.random()*Math.PI*2;
+        const y=-1.15 + Math.random()*3.0;
+        const r=(1.0 - (y+1.15)/3.0) * (0.95 + Math.random()*0.35);
+        const a=Math.random()*Math.PI*2;
         sp.position.set(Math.cos(a)*r, y, Math.sin(a)*r);
-        const s = 0.55 + Math.random()*1.15;
-        sp.scale.set(s, s, 1);
+        const s=0.55 + Math.random()*1.15;
+        sp.scale.set(s,s,1);
         fogGroup.add(sp);
       }
 
-      // ===== 装饰球：只亮金/亮红 =====
-      const goldMat = new THREE.MeshStandardMaterial({color:0xffd36a, metalness:0.95, roughness:0.20, emissive:0x2b1a00, emissiveIntensity:0.35});
-      const redMat  = new THREE.MeshStandardMaterial({color:0xff2a2a, metalness:0.65, roughness:0.30, emissive:0x330000, emissiveIntensity:0.22});
-      const ballGeo = new THREE.SphereGeometry(0.085, 18, 18);
-
+      // 金/红球（仅亮金+亮红）
+      const goldMat=new THREE.MeshStandardMaterial({color:0xffd36a, metalness:0.95, roughness:0.20, emissive:0x2b1a00, emissiveIntensity:0.35});
+      const redMat =new THREE.MeshStandardMaterial({color:0xff2a2a, metalness:0.65, roughness:0.30, emissive:0x330000, emissiveIntensity:0.22});
+      const ballGeo=new THREE.SphereGeometry(0.085, 18, 18);
       const balls=72;
       for(let i=0;i<balls;i++){
-        const m = new THREE.Mesh(ballGeo, (Math.random()<0.55)?goldMat:redMat);
-        // 分层放置
-        const layer = i%6;
-        const t = (i/(balls-1));
-        const y = -1.0 + t*2.55;
-        const radius = (1.08 - t*0.95) * (0.95 + (layer%2)*0.06);
-        const ang = (i*0.61803398875*2*Math.PI) + (layer*0.35);
+        const m=new THREE.Mesh(ballGeo, (Math.random()<0.55)?goldMat:redMat);
+        const t=i/(balls-1);
+        const y=-1.0 + t*2.55;
+        const radius=(1.08 - t*0.95) * (0.95 + ((i%6)%2)*0.06);
+        const ang=(i*0.61803398875*2*Math.PI) + ((i%6)*0.35);
         m.position.set(Math.cos(ang)*radius, y, Math.sin(ang)*radius);
-        m.userData.compact = m.position.clone();
-        // 散开态随机漂浮
-        m.userData.scatter = new THREE.Vector3(
-          (Math.random()-0.5)*5.2,
-          (Math.random()-0.5)*3.4,
-          (Math.random()-0.5)*5.2
-        );
-        ornamentsGroup.add(m);
+        m.userData.compact=m.position.clone();
+        m.userData.scatter=new THREE.Vector3((Math.random()-0.5)*5.2, (Math.random()-0.5)*3.4, (Math.random()-0.5)*5.2);
+        ornaments.add(m);
       }
 
-      // ===== 树顶星星 =====
-      starMesh = buildStar();
-      starMesh.position.set(0, 1.62, 0);
-      starMesh.userData.compact = starMesh.position.clone();
-      starMesh.userData.scatter = new THREE.Vector3(0.2, 1.2, -0.6);
-      root.add(starMesh);
+      // 星星（更明显）
+      star=buildStar();
+      star.position.set(0, 1.62, 0);
+      star.userData.compact=star.position.clone();
+      star.userData.scatter=new THREE.Vector3(0.2, 1.2, -0.6);
+      root.add(star);
 
-      // ===== 灯串：合拢态标准螺旋“线”，散开态随意流动 =====
-      const helixCurve = makeHelixCurve(3.1, 1.12, 7.6);
-      const tubeGeo = new THREE.TubeGeometry(helixCurve, 320, 0.015, 10, false);
-      const tubeMat = new THREE.MeshBasicMaterial({
-        color:0xffea74, transparent:true, opacity:0.62
-      });
-      const tube = new THREE.Mesh(tubeGeo, tubeMat);
+      // 标准螺旋金线（合拢态更“标准”）
+      const helix = makeHelixCurve(3.1, 1.12, 7.6);
+      const tubeGeo=new THREE.TubeGeometry(helix, 340, 0.015, 10, false);
+      const tubeMat=new THREE.MeshBasicMaterial({color:0xffea74, transparent:true, opacity:0.62});
+      const tube=new THREE.Mesh(tubeGeo, tubeMat);
       helixGroup.add(tube);
 
-      // 灯珠 + 辉光
-      const glowTex = makeRadialTexture("rgba(255,240,190,.95)", "rgba(0,0,0,0)");
+      const glowTex=makeRadialTex("rgba(255,240,190,.95)","rgba(0,0,0,0)");
       const bulbs=160;
       for(let i=0;i<bulbs;i++){
-        const t=i/(bulbs-1);
-        const p = helixCurve.getPointAt(t);
-        const bulb = new THREE.Mesh(
-          new THREE.SphereGeometry(0.018, 10, 10),
+        const tt=i/(bulbs-1);
+        const p=helix.getPointAt(tt);
+        const bulb=new THREE.Mesh(new THREE.SphereGeometry(0.018, 10, 10),
           new THREE.MeshBasicMaterial({color:0xfff2b0, transparent:true, opacity:0.95})
         );
         bulb.position.copy(p);
         helixGroup.add(bulb);
 
-        const glow = new THREE.Sprite(new THREE.SpriteMaterial({
+        const glow=new THREE.Sprite(new THREE.SpriteMaterial({
           map:glowTex, color:0xffd36a, transparent:true, opacity:0.55,
           depthWrite:false, blending:THREE.AdditiveBlending
         }));
@@ -728,397 +548,215 @@
         helixGroup.add(glow);
       }
 
-      // ===== 照片占位（先建7张，后续换贴图） =====
-      const planeGeo = new THREE.PlaneGeometry(0.62, 0.42);
+      // 照片：7 张平面（上传后贴图）
+      const planeGeo=new THREE.PlaneGeometry(0.62, 0.42);
       for(let i=0;i<MAX_PHOTOS;i++){
-        const mat = new THREE.MeshBasicMaterial({
-          color:0xffffff,
-          transparent:true,
-          opacity:0.98,
-          side:THREE.DoubleSide
-        });
-        const plane = new THREE.Mesh(planeGeo, mat);
+        const mat=new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:0.28, side:THREE.DoubleSide});
+        const plane=new THREE.Mesh(planeGeo, mat);
         plane.userData.index=i;
-        plane.userData.baseScale=1;
-        planePlanesInit(plane, i);
+        initPhotoSlot(plane, i);
         photosGroup.add(plane);
         photoPlanes.push(plane);
       }
 
-      // 让树整体更“高级”：轻微金色地面反光（假的，用大平面渐变）
-      const floorTex = makeRadialTexture("rgba(255,210,120,.14)", "rgba(0,0,0,0)");
-      const floor = new THREE.Mesh(
-        new THREE.PlaneGeometry(40,40),
+      // 地面柔光
+      const floorTex=makeRadialTex("rgba(255,210,120,.14)","rgba(0,0,0,0)");
+      const floor=new THREE.Mesh(new THREE.PlaneGeometry(40,40),
         new THREE.MeshBasicMaterial({map:floorTex, transparent:true, opacity:0.55, depthWrite:false})
       );
-      floor.rotation.x=-Math.PI/2;
-      floor.position.y=-1.45;
+      floor.rotation.x=-Math.PI/2; floor.position.y=-1.45;
       scene.add(floor);
+
+      // 交互：拖动旋转
+      const c=renderer.domElement;
+      c.addEventListener("pointerdown",(e)=>{dragging=true; lastX=e.clientX; lastY=e.clientY;},{passive:true});
+      window.addEventListener("pointerup",()=>dragging=false,{passive:true});
+      window.addEventListener("pointermove",(e)=>{
+        if(!dragging) return;
+        const dx=(e.clientX-lastX); const dy=(e.clientY-lastY);
+        lastX=e.clientX; lastY=e.clientY;
+        yawVel += dx*0.010;
+        pitchVel += dy*0.008;
+      },{passive:true});
+
+      applyResponsive();
+      window.addEventListener("resize", applyResponsive, {passive:true});
     }
 
-    function planePlanesInit(plane, i){
-      // 分层 + 周向均匀 + 最小遮挡（简化版但效果干净）
-      const layers = [
+    function initPhotoSlot(plane, i){
+      // 分层 + 周向均匀
+      const layers=[
         {y:-0.70, n:3, r:1.05},
         {y: 0.10, n:2, r:0.78},
         {y: 0.86, n:2, r:0.56},
       ];
-      let acc=0, layerIdx=0, slot=0;
-      for(let li=0;li<layers.length;li++){
-        const n=layers[li].n;
-        if (i < acc+n){ layerIdx=li; slot=i-acc; break; }
+      let acc=0, li=0, slot=0;
+      for(let k=0;k<layers.length;k++){
+        const n=layers[k].n;
+        if(i<acc+n){ li=k; slot=i-acc; break; }
         acc+=n;
       }
-      const L=layers[layerIdx];
-      const angStep = (Math.PI*2)/L.n;
-      const ang = slot*angStep + (layerIdx*0.35);
-      const pos = new THREE.Vector3(Math.cos(ang)*L.r, L.y, Math.sin(ang)*L.r);
-
+      const L=layers[li];
+      const ang=slot*(Math.PI*2/L.n) + li*0.35;
+      const pos=new THREE.Vector3(Math.cos(ang)*L.r, L.y, Math.sin(ang)*L.r);
       plane.position.copy(pos);
-      plane.userData.compact = pos.clone();
-      plane.userData.layer = layerIdx;
-      plane.userData.ang = ang;
-
-      // 散开态：分散但避免太拥挤
-      const scatter = new THREE.Vector3(
-        (Math.random()-0.5)*5.2,
-        (Math.random()-0.5)*3.4 + 0.3,
-        (Math.random()-0.5)*5.2
-      );
-      plane.userData.scatter = scatter;
-      plane.userData.homePos = pos.clone();
-      plane.userData.homeQuat = plane.quaternion.clone();
-
-      photoTargets[i] = {compact:pos.clone(), scatter:scatter.clone(), layer:layerIdx, angle:ang};
+      plane.userData.compact=pos.clone();
+      plane.userData.scatter=new THREE.Vector3((Math.random()-0.5)*5.2, (Math.random()-0.5)*3.4+0.3, (Math.random()-0.5)*5.2);
     }
 
-    function setState(next){
-      if (state===next) return;
-      state=next;
-
-      if (state===STATE.COMPACT){
-        targetSpread=0;
-      }else if (state===STATE.SCATTER){
-        targetSpread=1;
-      }else if (state===STATE.PHOTO){
-        // spread 保持在散开（背景漂浮更有氛围）
-        targetSpread=1;
-      }
-    }
-
-    function updateDots(){
-      // 手势状态显示
-      $("handDot").className = handReady ? "dot on" : "dot warn";
-      $("handTxt").textContent = handReady ? "已启用" : "触控可用";
-    }
-
-    // ========= 5) 照片上传与贴图 =========
-    function clearThumbs(){
-      $("thumbs").innerHTML="";
-    }
-    function addThumb(url){
-      const d=document.createElement("div");
-      d.className="thumb";
-      const img=document.createElement("img");
-      img.src=url;
-      d.appendChild(img);
-      $("thumbs").appendChild(d);
-    }
-
-    function applyPhotoToPlane(i, url){
-      const loader = new THREE.TextureLoader();
-      loader.load(url, (tex)=>{
-        tex.colorSpace = THREE.SRGBColorSpace;
-        tex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
-        tex.needsUpdate=true;
-        photoPlanes[i].material.map = tex;
-        photoPlanes[i].material.needsUpdate=true;
-      }, undefined, ()=>{
-        // 失败则用纯色
-      });
-    }
-
-    $("photoInput").addEventListener("change", ()=>{
-      const files = $("photoInput").files;
-      if (!files || !files.length){
-        $("fileHint").textContent="未选择文件";
-        return;
-      }
-      const list = Array.from(files).slice(0, MAX_PHOTOS);
-      $("fileHint").textContent = `已选择 ${list.length} 张`;
-      clearThumbs();
-
-      // 释放旧URL
-      while(photoUrls.length) URL.revokeObjectURL(photoUrls.pop());
-
-      list.forEach((f, idx)=>{
-        const url = URL.createObjectURL(f);
-        photoUrls.push(url);
-        addThumb(url);
-        applyPhotoToPlane(idx, url);
-      });
-
-      // 没选满就给剩余占位渐变（不显示“未选择文件”的尴尬）
-      for(let i=list.length;i<MAX_PHOTOS;i++){
-        photoPlanes[i].material.map = null;
-        photoPlanes[i].material.color.setHex(0xffffff);
-        photoPlanes[i].material.opacity = 0.28;
-        photoPlanes[i].material.needsUpdate=true;
-      }
-    });
-
-    // ========= 6) 放大态（DOM 叠层） =========
-    function showPhotoOverlay(url){
-      if (!url) return;
-      $("photoImg").src = url;
+    function showPhoto(url){
+      document.body.classList.add("photo-mode");
+      $("photoImg").src=url;
       $("photoStage").style.display="flex";
     }
-    function hidePhotoOverlay(){
+    function hidePhoto(){
+      document.body.classList.remove("photo-mode");
       $("photoStage").style.display="none";
       $("photoImg").src="";
     }
 
-    // ========= 7) 选择/抓取照片（捏合） =========
-    function pickPhotoByScreenXY(nx, ny){
-      // nx,ny: 0..1（屏幕坐标）
+    function pickPhotoByNDC(nx, ny){
       ndc.set(nx*2-1, -(ny*2-1));
       raycaster.setFromCamera(ndc, camera);
-      const hits = raycaster.intersectObjects(photoPlanes, false);
-      if (hits && hits.length) return hits[0].object;
-
-      // 没有命中时：选离射线最近的那张（磁吸）
-      let best=null, bestD=1e9;
-      const ro = raycaster.ray.origin;
-      const rd = raycaster.ray.direction;
-      for (const p of photoPlanes){
-        const v = p.position.clone().sub(ro);
-        const t = v.dot(rd);
-        const closest = ro.clone().add(rd.clone().multiplyScalar(t));
-        const d = p.position.distanceTo(closest);
-        if (d<bestD){bestD=d; best=p;}
-      }
-      return bestD<0.55 ? best : null;
+      const hits=raycaster.intersectObjects(photoPlanes, false);
+      if(hits && hits.length) return hits[0].object;
+      return null;
     }
 
-    // ========= 8) 动画循环 =========
-    let tPrev=performance.now();
     function animate(now){
-      const dt = Math.min(0.033, (now - tPrev)/1000);
-      tPrev=now;
+      const dt=Math.min(0.033, (animate._prev? (now-animate._prev)/1000 : 0.016));
+      animate._prev=now;
 
-      // spread 平滑
-      spread += (targetSpread - spread) * (1 - Math.pow(0.0001, dt)); // 时间无关平滑
-      spread = clamp(spread, 0, 1);
+      // 状态过渡
+      spread += (targetSpread - spread) * (1 - Math.pow(0.0001, dt));
+      spread=clamp(spread,0,1);
+      const a=smoothstep(spread);
 
-      // 合拢态：标准螺旋更“规整”；散开态：螺旋线随意流动
-      if (helixGroup && helixGroup.children.length){
-        // helixGroup.children[0] 是 tube
-        const tube = helixGroup.children[0];
-        if (tube && tube.geometry && tube.geometry.parameters){
-          // 轻微呼吸亮度
-          tube.material.opacity = 0.55 + 0.12*Math.sin(now*0.0015);
-        }
-        // 散开态下：让整条灯串漂浮摆动
-        const flow = spread;
-        helixGroup.rotation.y = 0.18*Math.sin(now*0.0012)*flow;
-        helixGroup.position.x = 0.18*Math.sin(now*0.0009)*flow;
-        helixGroup.position.z = 0.14*Math.cos(now*0.0011)*flow;
-      }
+      // 螺旋线：散开态“漂”，合拢态“标准”
+      helixGroup.position.x = 0.18*Math.sin(now*0.0009)*spread;
+      helixGroup.position.z = 0.14*Math.cos(now*0.0011)*spread;
+      helixGroup.rotation.y = 0.18*Math.sin(now*0.0012)*spread;
 
-      // 装饰球 & 星星：在 compact/scatter 之间插值
-      if (ornamentsGroup){
-        ornamentsGroup.children.forEach((m, idx)=>{
-          const a = smoothstep(spread);
-          const p = m.userData.compact.clone().lerp(m.userData.scatter, a);
-          // 散开态漂浮
-          p.y += spread*(0.10*Math.sin(now*0.001 + idx*0.7));
-          m.position.copy(p);
-        });
-      }
-      if (starMesh){
-        const a = smoothstep(spread);
-        const p = starMesh.userData.compact.clone().lerp(starMesh.userData.scatter, a);
+      // 球漂浮
+      ornaments.children.forEach((m, idx)=>{
+        const p=m.userData.compact.clone().lerp(m.userData.scatter, a);
+        p.y += spread*(0.10*Math.sin(now*0.001 + idx*0.7));
+        m.position.copy(p);
+      });
+
+      // 星
+      if(star){
+        const p=star.userData.compact.clone().lerp(star.userData.scatter, a);
         p.y += spread*(0.10*Math.sin(now*0.0012));
-        starMesh.position.copy(p);
-        starMesh.rotation.y += 0.01;
+        star.position.copy(p);
+        star.rotation.y += 0.01;
       }
 
-      // 树体 & 光雾：散开态更“散”，合拢态更“聚”
-      if (treeGroup){
-        treeGroup.scale.setScalar(1.0 - 0.08*spread);
-        treeGroup.rotation.y += 0.002;
-      }
-      if (fogGroup){
-        fogGroup.children.forEach((sp, i)=>{
-          const a = spread;
-          sp.position.x += 0.0025*Math.sin(now*0.0012 + i)*a;
-          sp.position.z += 0.0020*Math.cos(now*0.0011 + i*1.2)*a;
-          sp.material.opacity = (0.12 + 0.10*Math.sin(now*0.001 + i))*0.6 + 0.10;
-        });
-      }
+      // 光雾
+      fogGroup.children.forEach((sp,i)=>{
+        sp.position.x += 0.0025*Math.sin(now*0.0012 + i)*spread;
+        sp.position.z += 0.0020*Math.cos(now*0.0011 + i*1.2)*spread;
+      });
 
-      // 照片：compact/scatter 插值 + 朝向镜头
-      photoPlanes.forEach((p, i)=>{
-        const a = smoothstep(spread);
-        const target = p.userData.compact.clone().lerp(p.userData.scatter, a);
-        // 散开态轻微漂
+      // 照片：插值 + 正对镜头；被选中的做磁吸弹性
+      photoPlanes.forEach((p,i)=>{
+        const target=p.userData.compact.clone().lerp(p.userData.scatter, a);
         target.x += spread*(0.08*Math.sin(now*0.0015 + i*2.1));
         target.y += spread*(0.06*Math.cos(now*0.0013 + i*1.8));
         target.z += spread*(0.08*Math.cos(now*0.0014 + i*1.6));
 
-        // PHOTO 状态：被选中的那张“磁吸居中+弹性”
-        if (selectedPhoto && p===selectedPhoto){
-          const center = camera.position.clone().add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(2.2));
-          // 弹性：位置/缩放用 spring
-          const k = 1 - Math.pow(0.00001, dt);
+        const k=1 - Math.pow(0.00001, dt);
+
+        if(selectedPlane && p===selectedPlane){
+          const center=camera.position.clone().add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(2.2));
           p.position.lerp(center, k);
-          const s = 1.0 + 1.35*smoothstep( clamp((pinchHolding?1:0),0,1) );
+          const s=1 + 1.35*(pinchHolding?1:0);
           p.scale.lerp(new THREE.Vector3(s,s,s), k);
         }else{
-          const k = 1 - Math.pow(0.00001, dt);
           p.position.lerp(target, k);
           p.scale.lerp(new THREE.Vector3(1,1,1), k);
         }
 
-        // billboard（保持正面清晰）
         p.lookAt(camera.position);
-        p.material.opacity = (p.material.map ? 0.98 : 0.28);
       });
 
-      // 视角：yaw/pitch/roll（更灵敏、跟随幅度）
-      const damp = 1 - Math.pow(0.0008, dt);
-      yawVel *= (1 - 0.22*damp);
-      pitchVel *= (1 - 0.22*damp);
-
+      // 相机跟随（拖动/手势共用速度）
+      yawVel *= (1 - 0.22*(1 - Math.pow(0.0008, dt)));
+      pitchVel *= (1 - 0.22*(1 - Math.pow(0.0008, dt)));
       yaw += yawVel*dt;
       pitch += pitchVel*dt;
-      pitch = clamp(pitch, -0.65, 0.55);
+      pitch=clamp(pitch,-0.65,0.55);
 
-      const rDamp = 1 - Math.pow(0.003, dt);
-      roll += (0 - roll)*rDamp;
-
-      // 相机绕原点转
       const radius = 5.2 - 1.15*spread;
-      const cx = Math.sin(yaw)*radius;
-      const cz = Math.cos(yaw)*radius;
-      const cy = 1.15 + pitch*2.0;
-      camera.position.set(cx, cy, cz);
+      camera.position.set(Math.sin(yaw)*radius, 1.15 + pitch*2.0, Math.cos(yaw)*radius);
       camera.lookAt(0, 0.35, 0);
-
-      // 轻微 roll
       camera.rotation.z = roll;
 
       renderer.render(scene, camera);
       requestAnimationFrame(animate);
     }
 
-    // ========= 9) 触控/鼠标拖动：降级也能转 =========
-    function onPointerDown(e){
-      dragging=true;
-      lastPX=e.clientX; lastPY=e.clientY;
-    }
-    function onPointerMove(e){
-      if (!dragging) return;
-      const dx = e.clientX-lastPX;
-      const dy = e.clientY-lastPY;
-      lastPX=e.clientX; lastPY=e.clientY;
-      // 拖动映射到速度：更丝滑
-      yawVel   += dx * 0.010;
-      pitchVel += dy * 0.008;
-    }
-    function onPointerUp(){
-      dragging=false;
-    }
+    async function startHands(){
+      try{
+        const base=await loadHands();
+        const video=$("video");
 
-    // ========= 10) 手势驱动（更灵敏：用“位移积分”而非绝对位置） =========
-    function handleHand(lm){
-      if (!lm) return;
+        hands = new Hands({ locateFile:(f)=>base+f });
+        hands.setOptions({ maxNumHands:1, modelComplexity:1, minDetectionConfidence:0.60, minTrackingConfidence:0.60 });
+        hands.onResults((res)=>{
+          if(!res || !res.multiHandLandmarks || !res.multiHandLandmarks[0]) return;
+          const lm=res.multiHandLandmarks[0];
+          const g=stableGest(lm);
 
-      const stable = updateStableGesture(lm);
+          // 用掌心位置作为控制
+          const palmX=(lm[0].x + lm[5].x + lm[17].x)/3;
+          const palmY=(lm[0].y + lm[9].y + lm[13].y)/3;
 
-      // 屏幕坐标（0..1）
-      const palmX = (lm[0].x + lm[5].x + lm[17].x)/3;
-      const palmY = (lm[0].y + lm[9].y + lm[13].y)/3;
+          // roll 轻微加成
+          const a=lm[5], b=lm[17];
+          const ang=Math.atan2((b.y-a.y),(b.x-a.x));
+          roll=clamp(ang*0.18, -0.15, 0.15);
 
-      // roll：根据手掌横向骨架角度（轻微加成）
-      const a = lm[5], b = lm[17];
-      const ang = Math.atan2((b.y-a.y), (b.x-a.x));
-      roll = clamp( (ang*0.18), -0.15, 0.15 );
+          if(g===GEST.FIST){
+            setState(STATE.COMPACT);
+            selectedPlane=null; pinchHolding=false; hidePhoto();
+          }else if(g===GEST.OPEN){
+            if(state!==STATE.PHOTO) setState(STATE.SCATTER);
+          }
 
-      if (stable===GEST.FIST){
-        setState(STATE.COMPACT);
-        selectedPhoto=null;
-        pinchHolding=false;
-        hidePhotoOverlay();
-      }else if (stable===GEST.OPEN){
-        if (state!==STATE.PHOTO) setState(STATE.SCATTER);
-      }
-
-      // 散开态：移动手 → 旋转视角（幅度跟随）
-      if ((state===STATE.SCATTER) && stable!==GEST.PINCH){
-        if (lastHandX!=null){
-          const dx = palmX - lastHandX;
-          const dy = palmY - lastHandY;
-          // 关键：积分 → 手移动一整圈，视角就能转一整圈
-          yawVel   += dx * 6.2;  // 灵敏度（更跟手）
-          pitchVel += dy * 4.6;
-        }
-      }
-
-      // PINCH：抓取照片（拇指+食指捏合）
-      if (stable===GEST.PINCH){
-        if (!pinchHolding){
-          pinchHolding=true;
-
-          // 选一张：根据手在画面中的位置 raycast
-          const picked = pickPhotoByScreenXY(palmX, palmY);
-          if (picked){
-            selectedPhoto = picked;
-            setState(STATE.PHOTO);
-
-            const idx = picked.userData.index;
-            const url = photoUrls[idx];
-            if (url){
-              showPhotoOverlay(url);
-            }else{
-              showToast("这张照片还没上传：请先点“上传照片(≤7)”选择图片", 2600);
+          if(state===STATE.SCATTER && g!==GEST.PINCH){
+            // 更跟手：积分式速度
+            if(startHands._lastX!=null){
+              const dx=palmX-startHands._lastX;
+              const dy=palmY-startHands._lastY;
+              yawVel   += dx*6.2;
+              pitchVel += dy*4.6;
             }
           }
-        }
-      }else{
-        // 捏合松开：回原位
-        if (pinchHolding){
-          pinchHolding=false;
-          selectedPhoto=null;
-          hidePhotoOverlay();
-          // 回散开态（保持漂浮）
-          setState(STATE.SCATTER);
-        }
-      }
 
-      lastHandX=palmX;
-      lastHandY=palmY;
-    }
-
-    async function startHandTracking(){
-      try{
-        const base = await loadMediaPipeHands();
-        const video = $("video");
-
-        hands = new Hands({
-          locateFile: (file)=> base + file
-        });
-        hands.setOptions({
-          maxNumHands:1,
-          modelComplexity:1,
-          minDetectionConfidence:0.60,
-          minTrackingConfidence:0.60
-        });
-        hands.onResults((res)=>{
-          if (res && res.multiHandLandmarks && res.multiHandLandmarks[0]){
-            lastLm = res.multiHandLandmarks[0];
-            handleHand(lastLm);
+          if(g===GEST.PINCH){
+            if(!pinchHolding){
+              pinchHolding=true;
+              const picked=pickPhotoByNDC(palmX, palmY);
+              if(picked){
+                selectedPlane=picked;
+                setState(STATE.PHOTO);
+                const idx=picked.userData.index;
+                const url=photoUrls[idx];
+                if(url) showPhoto(url);
+                else toast("这张照片还没上传：请先点“上传照片(≤7)”选择图片", 2800);
+              }
+            }
+          }else{
+            if(pinchHolding){
+              pinchHolding=false;
+              selectedPlane=null;
+              hidePhoto();
+              setState(STATE.SCATTER);
+            }
           }
+
+          startHands._lastX=palmX; startHands._lastY=palmY;
         });
 
         mpCamera = new Camera(video, {
@@ -1127,95 +765,111 @@
           height: 480
         });
         await mpCamera.start();
+
         handReady=true;
-        updateDots();
-        showToast("手势已启用 ✅", 1200);
+        setDot("dotHand","on"); $("txtHand").textContent="已启用";
+        return true;
       }catch(e){
         handReady=false;
-        updateDots();
-        // 不再挡屏，只提示一下
-        showToast("手势库加载失败：仍可用手指/鼠标拖动旋转（建议换系统浏览器/换网络）", 4200);
+        setDot("dotHand","warn"); $("txtHand").textContent="未启用";
+        toast("手势库加载失败：仍可用手指/鼠标拖动旋转（建议换系统浏览器/换网络）", 4200);
+        return false;
       }
     }
 
-    // ========= 11) 自适配 =========
-    function onResize(){
-      if (!renderer || !camera) return;
-      camera.aspect = innerWidth/innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(innerWidth, innerHeight);
-
-      // 不同端：树距 & 视野微调
-      const minDim = Math.min(innerWidth, innerHeight);
-      const phone = minDim < 520;
-      camera.fov = phone ? 58 : 52;
-      camera.updateProjectionMatrix();
+    // 上传照片：按钮触发 input.click()（解决你“选了也显示未选择”）
+    const thumbs=$("thumbs");
+    function clearThumbs(){ thumbs.innerHTML=""; }
+    function addThumb(url){
+      const d=document.createElement("div");
+      d.className="thumb";
+      const img=document.createElement("img");
+      img.src=url;
+      d.appendChild(img);
+      thumbs.appendChild(d);
     }
-    addEventListener("resize", onResize);
+    function applyPhotoTexture(i, url){
+      const loader=new THREE.TextureLoader();
+      loader.load(url, (tex)=>{
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+        photoPlanes[i].material.map = tex;
+        photoPlanes[i].material.opacity = 0.98;
+        photoPlanes[i].material.needsUpdate = true;
+      }, undefined, ()=>{
+        // ignore
+      });
+    }
 
-    // ========= 12) 按钮逻辑 =========
-    $("replayBtn").addEventListener("click", ()=>{
-      tryPlayBGM();
-    });
-    $("recamBtn").addEventListener("click", async ()=>{
-      await tryOpenCamera();
-      if (!handReady) startHandTracking();
+    $("btnPick").addEventListener("click", ()=> $("fileInput").click());
+    $("fileInput").addEventListener("change", ()=>{
+      const files=$("fileInput").files;
+      if(!files || !files.length){
+        $("fileHint").textContent="未选择文件";
+        return;
+      }
+      const list=Array.from(files).slice(0, MAX_PHOTOS);
+      $("fileHint").textContent=`已选择 ${list.length} 张`;
+      clearThumbs();
+
+      while(photoUrls.length) URL.revokeObjectURL(photoUrls.pop());
+      list.forEach((f, idx)=>{
+        const url=URL.createObjectURL(f);
+        photoUrls.push(url);
+        addThumb(url);
+        applyPhotoTexture(idx, url);
+      });
+      for(let i=list.length;i<MAX_PHOTOS;i++){
+        photoPlanes[i].material.map=null;
+        photoPlanes[i].material.opacity=0.28;
+        photoPlanes[i].material.needsUpdate=true;
+      }
     });
 
-    // ========= 13) 启动：大按钮一次完成 =========
-    $("startBig").addEventListener("click", async ()=>{
+    // 面板按钮备用
+    $("btnCompact").addEventListener("click", ()=>{ setState(STATE.COMPACT); selectedPlane=null; pinchHolding=false; hidePhoto(); });
+    $("btnScatter").addEventListener("click", ()=>{ setState(STATE.SCATTER); selectedPlane=null; pinchHolding=false; hidePhoto(); });
+    $("btnReplay").addEventListener("click", ()=>playBGM());
+    $("btnRecam").addEventListener("click", async ()=>{ await openCamera(); if(!handReady) startHands(); });
+
+    // 启动按钮：真正的启动函数（覆盖掉最开始的占位 alert）
+    window.__startExperience = async function(){
       try{
-        // 先保证 three
-        if (!window.THREE){
-          await ensureThree();
-        }
-        // 初始化渲染（只做一次）
-        if (!scene){
-          buildScene();
-          onResize();
+        $("startStatus").textContent="正在加载 Three.js…";
+        const src=await ensureThree();
+        THREE=window.THREE;
+        setDot("dotThree","on"); $("txtThree").textContent="已加载";
+        $("startStatus").textContent="正在初始化场景…";
+        buildScene();
+        requestAnimationFrame(animate);
 
-          // 触控/鼠标
-          renderer.domElement.addEventListener("pointerdown", onPointerDown, {passive:true});
-          addEventListener("pointermove", onPointerMove, {passive:true});
-          addEventListener("pointerup", onPointerUp, {passive:true});
-          addEventListener("pointercancel", onPointerUp, {passive:true});
+        $("startStatus").textContent="正在播放音乐 & 请求摄像头权限…";
+        await Promise.all([playBGM(), openCamera()]);
 
-          requestAnimationFrame(animate);
-        }
+        // 手势（可失败但不影响拖动交互）
+        $("startStatus").textContent="正在启动手势识别…";
+        await startHands();
 
-        // 同时请求音乐+摄像头
-        const [bgmOk, camOk] = await Promise.all([
-          tryPlayBGM(),
-          tryOpenCamera()
-        ]);
-
-        // 手势
-        if (camOk){
-          await startHandTracking();
-        }else{
-          handReady=false; updateDots();
-        }
-
-        // 默认进入“合拢态”
+        // 初始合拢态
         setState(STATE.COMPACT);
 
-        $("startOverlay").style.display="none";
+        // 收起 overlay
+        document.getElementById("startOverlay").style.display="none";
+        toast("已进入体验 ✅", 1400);
       }catch(e){
-        showToast(String(e.message||e), 5200);
+        setDot("dotThree","warn"); $("txtThree").textContent="失败";
+        $("startStatus").textContent="启动失败：\n"+(e && e.message ? e.message : String(e));
+        toast("启动失败：请确认 libs/three.min.js 存在（文件名必须是 three.min.js）", 5200);
       }
-    });
+    };
 
-    // ========= 14) 页面加载就先尝试加载 Three（不强制） =========
-    (async ()=>{
-      try{
-        await ensureThree();
-        // 预加载成功后，不做任何自动播放/自动摄像头（必须用户点击）
-      }catch(e){
-        // 不挡界面，让用户点按钮后再提示
-      }
-    })();
-
-    updateDots();
+    // 页面小提示：Three 是否已存在
+    if(window.THREE){
+      setDot("dotThree","on"); $("txtThree").textContent="已加载";
+    }else{
+      setDot("dotThree","warn"); $("txtThree").textContent="待加载";
+    }
+    setDot("dotHand","warn"); $("txtHand").textContent="待启动";
   })();
   </script>
 </body>
