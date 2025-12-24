@@ -101,6 +101,13 @@
     #startBtn:active{transform: scale(.985);}
     .smallTip{margin-top:12px; font-size:12px; color:rgba(255,255,255,.72);}
     .smallTip span{color:rgba(255,211,106,.92); font-weight:900;}
+    #startStatus{
+      margin-top:10px;
+      font-size:12px;
+      color:rgba(255,255,255,.80);
+      line-height:1.4;
+      min-height:18px;
+    }
 
     /* Toast */
     #toast{
@@ -113,12 +120,12 @@
       padding:10px 12px;
       border-radius:14px;
       font-size:13px;
-      max-width:min(520px, calc(100vw - 28px));
+      max-width:min(560px, calc(100vw - 28px));
       opacity:0; transition: opacity .25s ease;
     }
     #toast.show{opacity:1;}
 
-    /* 放大照片：保证正面完整清晰 */
+    /* 放大照片 */
     #photoOverlay{
       position:fixed; inset:0; z-index:40;
       display:none; place-items:center;
@@ -169,7 +176,8 @@
       <h2 class="startTitle">✨ 圣诞树 · 开始体验</h2>
       <p class="startSub">点一次就会尝试播放圣诞BGM，并请求摄像头权限用于手势交互。<br/>（不想开摄像头也可以只看视觉效果）</p>
       <button id="startBtn">开始体验（点我）</button>
-      <div class="smallTip">建议用 <span>Chrome / Safari / Edge</span> 打开，允许摄像头后体验最佳。</div>
+      <div id="startStatus"></div>
+      <div class="smallTip">建议用 <span>Chrome / Safari / Edge</span> 打开；在微信/QQ内置浏览器里可能无法调用摄像头。</div>
     </div>
   </div>
 
@@ -183,745 +191,762 @@
   <audio id="bgm" preload="auto" loop playsinline
     src="https://upload.wikimedia.org/wikipedia/commons/3/32/Carol_of_the_Bells_-_Concert_Band_-_United_States_Air_Force_Band_of_the_Rockies.mp3"></audio>
 
+  <!-- 依赖：Three.js（非 module 版更稳） -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.min.js"></script>
+
   <!-- MediaPipe Hands -->
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
-  <script type="module">
-    import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js";
-
-    /* Toast */
-    const toastEl = document.getElementById("toast");
-    let toastTimer = null;
-    function toast(msg, ms=1800){
-      toastEl.textContent = msg;
-      toastEl.classList.add("show");
-      clearTimeout(toastTimer);
-      toastTimer = setTimeout(()=>toastEl.classList.remove("show"), ms);
-    }
-
-    /* 音乐：淡入淡出更丝滑 */
-    const bgm = document.getElementById("bgm");
-    let musicOn = false;
-    let musicFadeRAF = 0;
-    function setMusic(on){
-      musicOn = on;
-      cancelAnimationFrame(musicFadeRAF);
-      const target = on ? 0.85 : 0.0;
-      const start = bgm.volume ?? 0;
-      const t0 = performance.now();
-      const dur = 450;
-      const step = (t)=>{
-        const p = Math.min(1, (t - t0) / dur);
-        const s = p*p*(3-2*p);
-        bgm.volume = start + (target - start) * s;
-        if(p < 1) musicFadeRAF = requestAnimationFrame(step);
-      };
-      musicFadeRAF = requestAnimationFrame(step);
-
-      if(on){
-        bgm.muted = false;
-        bgm.play().catch(()=>toast("如果没声音：请再点一次“音乐：开启”或点一下页面", 2400));
-      }else{
-        setTimeout(()=>{ try{ bgm.pause(); }catch{} }, 520);
+  <script>
+    (function(){
+      /* --------- 统一的错误提示：如果脚本/CDN加载失败，你会在页面底部看到原因 --------- */
+      const toastEl = document.getElementById("toast");
+      let toastTimer = null;
+      function toast(msg, ms=2600){
+        toastEl.textContent = msg;
+        toastEl.classList.add("show");
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(()=>toastEl.classList.remove("show"), ms);
       }
-    }
-
-    /* Three */
-    const wrap = document.getElementById("wrap");
-    const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true, powerPreference:"high-performance" });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.18;
-    wrap.appendChild(renderer.domElement);
-
-    const scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0x07060a, 0.038);
-
-    const camera = new THREE.PerspectiveCamera(48, window.innerWidth/window.innerHeight, 0.08, 80);
-    camera.position.set(0, 2.5, 8.2);
-
-    const rig = new THREE.Group();
-    scene.add(rig);
-
-    function applyResponsive(){
-      const w = window.innerWidth, h = window.innerHeight;
-      const aspect = w / h;
-      const short = Math.min(w, h);
-      const scale = THREE.MathUtils.clamp(short / 820, 0.78, 1.18);
-      rig.scale.setScalar(scale);
-
-      const isPhone = short < 520 || aspect < 0.75;
-      camera.fov = isPhone ? 56 : 48;
-      camera.position.z = isPhone ? 9.4 : 8.2;
-      camera.position.y = isPhone ? 2.75 : 2.5;
-      camera.updateProjectionMatrix();
-
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, isPhone ? 1.75 : 2));
-    }
-
-    /* Lights：暖、电影感 */
-    scene.add(new THREE.AmbientLight(0xffe6b8, 0.58));
-
-    const key = new THREE.DirectionalLight(0xfff0d6, 1.05);
-    key.position.set(4, 6, 4);
-    scene.add(key);
-
-    const rim = new THREE.DirectionalLight(0xffd36a, 0.55);
-    rim.position.set(-5, 4, -4);
-    scene.add(rim);
-
-    const glowLight = new THREE.PointLight(0xffd36a, 1.0, 16, 2.0);
-    glowLight.position.set(0, 3.2, 2.6);
-    scene.add(glowLight);
-
-    /* Tree: 分枝层级 + 光雾 */
-    const tree = new THREE.Group();
-    rig.add(tree);
-
-    const TREE_H = 5.2;
-    const BASE_R = 2.0;
-
-    const branchGeom = new THREE.BufferGeometry();
-    const segs = [];
-    const levels = 14, perLevel = 46;
-    let seed = 1.234;
-    const randn = (s)=>{ const x = Math.sin(s)*10000; return x - Math.floor(x); };
-
-    for(let li=0; li<levels; li++){
-      const y = (li/(levels-1)) * (TREE_H*0.92);
-      const t = 1 - y/(TREE_H*0.92);
-      const r = BASE_R * Math.pow(t, 0.55);
-      for(let i=0;i<perLevel;i++){
-        seed += 0.37;
-        const a = (i/perLevel)*Math.PI*2 + randn(seed)*0.12;
-        const len = 0.25 + randn(seed+2.1)*0.45;
-        const sx = Math.cos(a)*r*0.82;
-        const sz = Math.sin(a)*r*0.82;
-        const ex = Math.cos(a)*(r + len);
-        const ez = Math.sin(a)*(r + len);
-        const ey = y + (0.04 + randn(seed+4.2)*0.12);
-        segs.push(sx,y,sz, ex,ey,ez);
-      }
-    }
-    branchGeom.setAttribute("position", new THREE.Float32BufferAttribute(segs,3));
-    const branchMat = new THREE.LineBasicMaterial({ color:0x1f6b3a, transparent:true, opacity:0.70 });
-    tree.add(new THREE.LineSegments(branchGeom, branchMat));
-
-    // 光雾
-    const fogCount = 1600;
-    const fogPos = new Float32Array(fogCount*3);
-    const fogSize = new Float32Array(fogCount);
-    const fogSeed = new Float32Array(fogCount);
-    for(let i=0;i<fogCount;i++){
-      seed += 0.19;
-      const y = Math.pow(randn(seed+1.1), 0.85) * (TREE_H*0.98);
-      const t = 1 - y/(TREE_H*0.98);
-      const r = BASE_R * Math.pow(t, 0.72) * (0.2 + randn(seed+2.2)*0.9);
-      const a = randn(seed+3.3)*Math.PI*2;
-      fogPos[i*3+0]=Math.cos(a)*r;
-      fogPos[i*3+1]=y;
-      fogPos[i*3+2]=Math.sin(a)*r;
-      fogSize[i] = 8 + randn(seed+5.1)*20;
-      fogSeed[i] = randn(seed+7.7);
-    }
-    const fogGeom = new THREE.BufferGeometry();
-    fogGeom.setAttribute("position", new THREE.BufferAttribute(fogPos,3));
-    fogGeom.setAttribute("aSize", new THREE.BufferAttribute(fogSize,1));
-    fogGeom.setAttribute("aSeed", new THREE.BufferAttribute(fogSeed,1));
-    const fogMat = new THREE.ShaderMaterial({
-      transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
-      uniforms:{
-        uTime:{value:0},
-        uColor1:{value:new THREE.Color(0xffd36a)},
-        uColor2:{value:new THREE.Color(0xffefb0)},
-        uOpacity:{value:0.26}
-      },
-      vertexShader:`
-        attribute float aSize; attribute float aSeed;
-        uniform float uTime; varying float vSeed;
-        void main(){
-          vSeed=aSeed;
-          vec3 p=position;
-          float w=sin(uTime*0.8+aSeed*6.2831)*0.06;
-          p.x+=w; p.z-=w*0.9;
-          vec4 mv=modelViewMatrix*vec4(p,1.0);
-          gl_Position=projectionMatrix*mv;
-          gl_PointSize=aSize*(140.0/-mv.z);
-        }`,
-      fragmentShader:`
-        uniform vec3 uColor1,uColor2; uniform float uOpacity;
-        varying float vSeed;
-        void main(){
-          vec2 uv=gl_PointCoord*2.0-1.0;
-          float d=dot(uv,uv);
-          float a=smoothstep(1.0,0.0,d);
-          a*=a;
-          vec3 c=mix(uColor1,uColor2,vSeed);
-          gl_FragColor=vec4(c,a*uOpacity);
-        }`
-    });
-    tree.add(new THREE.Points(fogGeom, fogMat));
-
-    /* 顶部五角星：更明显、角更大 */
-    function makeStar(){
-      const shape = new THREE.Shape();
-      const spikes=5, outer=0.34, inner=0.14;
-      let rot=Math.PI/2*3, cx=0, cy=0;
-      shape.moveTo(cx, cy-outer);
-      for(let i=0;i<spikes;i++){
-        shape.lineTo(cx+Math.cos(rot)*outer, cy+Math.sin(rot)*outer); rot+=Math.PI/spikes;
-        shape.lineTo(cx+Math.cos(rot)*inner, cy+Math.sin(rot)*inner); rot+=Math.PI/spikes;
-      }
-      shape.closePath();
-      const geo = new THREE.ExtrudeGeometry(shape, {depth:0.08, bevelEnabled:true, bevelThickness:0.02, bevelSize:0.02, bevelSegments:2});
-      geo.center();
-      const mat = new THREE.MeshStandardMaterial({
-        color:0xffd36a, metalness:0.95, roughness:0.18,
-        emissive:new THREE.Color(0xffb84a), emissiveIntensity:0.95
+      window.addEventListener("error", (e)=>{
+        const msg = (e && (e.message || e.type)) ? (e.message || e.type) : "未知错误";
+        toast("脚本错误：" + msg + "（可能是网络/被拦截/CDN不可用）", 5000);
       });
-      const m = new THREE.Mesh(geo, mat);
-      m.position.set(0, TREE_H*0.98+0.25, 0);
-      m.rotation.set(0.18, 0.0, 0.10);
-      m.scale.setScalar(1.30);
-      return m;
-    }
-    const star = makeStar();
-    tree.add(star);
+      window.addEventListener("unhandledrejection", (e)=>{
+        toast("脚本异常：" + (e.reason?.message || e.reason || "未知原因"), 5000);
+      });
 
-    /* 灯串：合拢态标准螺旋黄线；散开态随意流动 */
-    function buildHelixPoints(standardness, time){
-      const pts=[];
-      const turns=6.2, steps=220;
-      for(let i=0;i<=steps;i++){
-        const u=i/steps;
-        const y=0.25+u*(TREE_H*0.92);
-        const t=1-y/(TREE_H*0.92);
-        const rBase=BASE_R*Math.pow(t,0.65)*0.98;
-        const a0=u*turns*Math.PI*2;
-        const wob=(1-standardness);
-        const n1=Math.sin(time*0.9+u*12.0)*0.18*wob;
-        const n2=Math.cos(time*0.7+u*9.0)*0.14*wob;
-        const r=rBase*(1+n1);
-        const a=a0+n2;
-        pts.push(new THREE.Vector3(Math.cos(a)*r, y, Math.sin(a)*r));
-      }
-      return pts;
-    }
-    const helixMat = new THREE.MeshBasicMaterial({ color:0xffd36a, transparent:true, opacity:0.88 });
-    let helixMesh=null;
+      const startBtn = document.getElementById("startBtn");
+      const startStatus = document.getElementById("startStatus");
+      const startOverlay = document.getElementById("startOverlay");
 
-    function rebuildHelix(standardness, time){
-      if(helixMesh) tree.remove(helixMesh);
-      const curve = new THREE.CatmullRomCurve3(buildHelixPoints(standardness, time));
-      const geo = new THREE.TubeGeometry(curve, 220, 0.018, 10, false);
-      helixMesh = new THREE.Mesh(geo, helixMat);
-      helixMesh.renderOrder = 1;
-      tree.add(helixMesh);
+      const camBtn = document.getElementById("camBtn");
+      const musicBtn = document.getElementById("musicBtn");
+      const fileInput = document.getElementById("fileInput");
 
-      if(!rebuildHelix.lights){
-        rebuildHelix.lights=[];
-        const bulbG=new THREE.SphereGeometry(0.03, 12, 10);
-        const bulbM=new THREE.MeshBasicMaterial({color:0xffefb0, transparent:true, opacity:0.96});
-        for(let i=0;i<70;i++){
-          const b=new THREE.Mesh(bulbG, bulbM);
-          tree.add(b);
-          rebuildHelix.lights.push(b);
+      const bgm = document.getElementById("bgm");
+
+      function setStatus(s){ startStatus.textContent = s; }
+
+      /* --------- 音乐：淡入淡出 --------- */
+      let musicOn = false;
+      let fadeRAF = 0;
+      function setMusic(on){
+        musicOn = on;
+        cancelAnimationFrame(fadeRAF);
+        const target = on ? 0.85 : 0.0;
+        const start = (typeof bgm.volume === "number") ? bgm.volume : 0;
+        const t0 = performance.now();
+        const dur = 450;
+        const step = (t)=>{
+          const p = Math.min(1, (t - t0) / dur);
+          const s = p*p*(3-2*p);
+          bgm.volume = start + (target - start) * s;
+          if(p < 1) fadeRAF = requestAnimationFrame(step);
+        };
+        fadeRAF = requestAnimationFrame(step);
+
+        if(on){
+          bgm.muted = false;
+          bgm.play().catch(()=>{
+            toast("音乐未能自动播放：请再点一下页面或点“音乐：开启”", 3500);
+          });
+        }else{
+          setTimeout(()=>{ try{ bgm.pause(); }catch{} }, 520);
         }
       }
-      const pts = buildHelixPoints(1, time);
-      rebuildHelix.lights.forEach((b,i)=>{
-        const u=i/(rebuildHelix.lights.length-1);
-        b.position.copy(pts[Math.floor(u*(pts.length-1))]);
-      });
-    }
-    rebuildHelix(1,0);
 
-    /* 元素：只要亮金&亮红球 + 少量金立方体 + 7张照片 */
-    const elements=[];
-    const photoPlanes=[];
-    const photoTex=[];
-    const goldMat = new THREE.MeshStandardMaterial({ color:0xffd36a, metalness:0.95, roughness:0.18, emissive:new THREE.Color(0x2a1a06), emissiveIntensity:0.55 });
-    const redMat  = new THREE.MeshStandardMaterial({ color:0xff2a2a, metalness:0.60, roughness:0.25, emissive:new THREE.Color(0x200008), emissiveIntensity:0.35 });
+      /* --------- 摄像头 / MediaPipe --------- */
+      let camOn = false;
+      let stream = null;
+      let videoEl = null;
+      let hands = null;
+      let mpCamera = null;
 
-    const sphereG = new THREE.SphereGeometry(0.09,22,18);
-    const cubeG   = new THREE.BoxGeometry(0.11,0.11,0.11);
-
-    seed = 9.87;
-    const BALLS=170;
-    for(let i=0;i<BALLS;i++){
-      const m = (i%2===0) ? goldMat : redMat;
-      const mesh = new THREE.Mesh(sphereG, m);
-      tree.add(mesh);
-      elements.push({kind:"orn", obj:mesh, compact:new THREE.Vector3(), scatter:new THREE.Vector3(),
-        baseRot:new THREE.Euler(randn(seed+1)*0.6, randn(seed+2)*0.6, randn(seed+3)*0.6),
-        wob:new THREE.Vector3(randn(seed+4), randn(seed+5), randn(seed+6))
-      });
-      seed += 0.41;
-    }
-    const CUBES=48;
-    for(let i=0;i<CUBES;i++){
-      const mesh = new THREE.Mesh(cubeG, goldMat);
-      tree.add(mesh);
-      elements.push({kind:"cube", obj:mesh, compact:new THREE.Vector3(), scatter:new THREE.Vector3(),
-        baseRot:new THREE.Euler(randn(seed+1)*0.8, randn(seed+2)*0.8, randn(seed+3)*0.8),
-        wob:new THREE.Vector3(randn(seed+4), randn(seed+5), randn(seed+6))
-      });
-      seed += 0.53;
-    }
-
-    function makePhotoPlane(){
-      const g = new THREE.PlaneGeometry(0.55, 0.38);
-      const mat = new THREE.MeshStandardMaterial({ color:0xffffff, metalness:0.05, roughness:0.35, transparent:true, opacity:0.98 });
-      const mesh = new THREE.Mesh(g, mat);
-      mesh.renderOrder = 2;
-      tree.add(mesh);
-      const frameMat = new THREE.MeshStandardMaterial({ color:0xffffff, metalness:0.2, roughness:0.55, transparent:true, opacity:0.16 });
-      const frame = new THREE.Mesh(new THREE.PlaneGeometry(0.59,0.42), frameMat);
-      frame.position.z = -0.002;
-      mesh.add(frame);
-      return mesh;
-    }
-    for(let i=0;i<7;i++){
-      const p = makePhotoPlane();
-      photoPlanes.push(p);
-      elements.push({kind:"photo", obj:p, compact:new THREE.Vector3(), scatter:new THREE.Vector3(),
-        wob:new THREE.Vector3(Math.random(),Math.random(),Math.random()), photoIndex:i
-      });
-    }
-
-    function computeAnchors(num){
-      const anchors=[];
-      const golden=2.399963229728653;
-      for(let i=0;i<num;i++){
-        const y=(i/(num-1))*(TREE_H*0.78)+0.55;
-        const t=1-(y/(TREE_H*0.98));
-        const r=BASE_R*Math.pow(t,0.72)*0.92;
-        const a=(i*golden)%(Math.PI*2);
-        anchors.push({pos:new THREE.Vector3(Math.cos(a)*r,y,Math.sin(a)*r)});
+      function updateCamUI(){
+        if(camOn){
+          camBtn.classList.add("on");
+          camBtn.innerHTML = "<span>📷</span><span>摄像头：开启</span>";
+        }else{
+          camBtn.classList.remove("on");
+          camBtn.innerHTML = "<span>📷</span><span>摄像头：关闭</span>";
+        }
       }
-      return anchors;
-    }
-
-    function assignPositions(){
-      // 球/立方体
-      for(const e of elements){
-        if(e.kind==="photo") continue;
-        seed += 0.37;
-        const y=Math.pow(randn(seed+1.2),0.9)*(TREE_H*0.92);
-        const t=1-y/(TREE_H*0.92);
-        const r=BASE_R*Math.pow(t,0.75);
-        const a=randn(seed+2.2)*Math.PI*2;
-        e.compact.set(Math.cos(a)*r, y, Math.sin(a)*r);
-
-        const sr=3.6+randn(seed+3.3)*2.2;
-        const sa=randn(seed+4.4)*Math.PI*2;
-        const sy=(randn(seed+5.5)-0.35)*3.1+1.1;
-        e.scatter.set(Math.cos(sa)*sr, sy, Math.sin(sa)*sr);
+      function updateMusicUI(){
+        if(musicOn){
+          musicBtn.classList.add("on");
+          musicBtn.innerHTML = "<span>🎵</span><span>音乐：开启</span>";
+        }else{
+          musicBtn.classList.remove("on");
+          musicBtn.innerHTML = "<span>🎵</span><span>音乐：关闭</span>";
+        }
       }
 
-      // 照片：分层+周向均匀
-      const anchors = computeAnchors(7);
-      for(let i=0;i<7;i++){
-        const pe = elements.find(x=>x.kind==="photo" && x.photoIndex===i);
-        pe.compact.copy(anchors[i].pos);
-        const out = anchors[i].pos.clone().multiplyScalar(1.55);
-        out.x += (i%2?0.55:-0.55);
-        out.z += (i%2?-0.35:0.35);
-        out.y += (i-3)*0.08;
-        pe.scatter.copy(out);
+      /* --------- Three.js 场景（非 module 版本） --------- */
+      if(!window.THREE){
+        setStatus("Three.js 未加载成功（可能网络拦截/无法访问 jsdelivr）。");
+        toast("Three.js 加载失败：请换网络或稍后重试", 6000);
+        return;
       }
-    }
-    assignPositions();
 
-    /* 状态机 */
-    const STATE={COMPACT:"compact", SCATTER:"scatter", PHOTO:"photo"};
-    let state=STATE.COMPACT, stateTarget=STATE.COMPACT;
-    let mix=0, mixVel=0;
-    function goto(next){
-      if(next===STATE.PHOTO){ stateTarget=STATE.SCATTER; state=STATE.PHOTO; }
-      else { state=next; stateTarget=next; }
-    }
+      const THREE = window.THREE;
+      const wrap = document.getElementById("wrap");
 
-    function smoothDamp(current, target, currentVelocity, smoothTime, dt){
-      smoothTime=Math.max(0.0001,smoothTime);
-      const omega=2/smoothTime;
-      const x=omega*dt;
-      const exp=1/(1+x+0.48*x*x+0.235*x*x*x);
-      let change=current-target;
-      const temp=(currentVelocity+omega*change)*dt;
-      currentVelocity=(currentVelocity-omega*temp)*exp;
-      const output=target+(change+temp)*exp;
-      return {value:output, vel:currentVelocity};
-    }
+      const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true, powerPreference:"high-performance" });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.18;
+      wrap.appendChild(renderer.domElement);
 
-    /* 放大照片：DOM层显示（正面完整高清） */
-    const photoOverlay=document.getElementById("photoOverlay");
-    const photoImg=document.getElementById("photoImg");
-    let grabbed=-1;
-    function enterPhoto(i){
-      grabbed=i;
-      const tex=photoTex[i];
-      if(tex?.image?.src) photoImg.src=tex.image.src;
-      document.body.classList.add("photo-mode");
-      photoOverlay.classList.add("show");
-      goto(STATE.PHOTO);
-    }
-    function exitPhoto(){
-      grabbed=-1;
-      document.body.classList.remove("photo-mode");
-      photoOverlay.classList.remove("show");
-      if(state===STATE.PHOTO) goto(STATE.SCATTER);
-    }
+      const scene = new THREE.Scene();
+      scene.fog = new THREE.FogExp2(0x07060a, 0.038);
 
-    /* 上传照片 */
-    const fileInput=document.getElementById("fileInput");
-    const loader=new THREE.TextureLoader();
-    function applyTex(i, tex){
-      tex.colorSpace=THREE.SRGBColorSpace;
-      tex.anisotropy = renderer.capabilities.getMaxAnisotropy?.() ?? 1;
-      tex.minFilter=THREE.LinearMipmapLinearFilter;
-      tex.magFilter=THREE.LinearFilter;
-      tex.generateMipmaps=true;
-      tex.needsUpdate=true;
-      photoTex[i]=tex;
-      const plane=photoPlanes[i];
-      plane.material.map=tex;
-      plane.material.needsUpdate=true;
-    }
-    function placeholder(i){
-      const c=document.createElement("canvas");
-      c.width=1024; c.height=768;
-      const g=c.getContext("2d");
-      const grd=g.createLinearGradient(0,0,1024,768);
-      grd.addColorStop(0,"rgba(255,211,106,0.95)");
-      grd.addColorStop(0.55,"rgba(255,42,42,0.85)");
-      grd.addColorStop(1,"rgba(31,107,58,0.85)");
-      g.fillStyle=grd; g.fillRect(0,0,c.width,c.height);
-      g.fillStyle="rgba(0,0,0,.20)"; g.fillRect(40,40,c.width-80,c.height-80);
-      g.fillStyle="rgba(255,255,255,.92)";
-      g.font="bold 56px system-ui"; g.fillText("上传照片",80,180);
-      g.font="36px system-ui"; g.fillStyle="rgba(255,255,255,.78)";
-      g.fillText(`第 ${i+1} 张`,80,250);
-      g.fillText("Pinch 捏合抓取放大",80,320);
-      const t=new THREE.CanvasTexture(c);
-      t.colorSpace=THREE.SRGBColorSpace;
-      return t;
-    }
-    for(let i=0;i<7;i++) applyTex(i, placeholder(i));
+      const camera = new THREE.PerspectiveCamera(48, window.innerWidth/window.innerHeight, 0.08, 80);
+      camera.position.set(0, 2.5, 8.2);
 
-    fileInput.addEventListener("change", async (e)=>{
-      const files=Array.from(e.target.files||[]).slice(0,7);
-      if(!files.length) return;
-      toast(`已选择 ${files.length} 张照片`,1600);
-      for(let i=0;i<7;i++){
-        if(!files[i]) continue;
-        const url=URL.createObjectURL(files[i]);
-        await new Promise((resolve)=>{
-          loader.load(url,(tex)=>{ applyTex(i,tex); resolve(); }, undefined, ()=>resolve());
+      const rig = new THREE.Group();
+      scene.add(rig);
+
+      function applyResponsive(){
+        const w = window.innerWidth, h = window.innerHeight;
+        const aspect = w / h;
+        const short = Math.min(w, h);
+        const scale = THREE.MathUtils.clamp(short / 820, 0.78, 1.18);
+        rig.scale.setScalar(scale);
+
+        const isPhone = short < 520 || aspect < 0.75;
+        camera.fov = isPhone ? 56 : 48;
+        camera.position.z = isPhone ? 9.4 : 8.2;
+        camera.position.y = isPhone ? 2.75 : 2.5;
+        camera.updateProjectionMatrix();
+
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, isPhone ? 1.75 : 2));
+      }
+
+      scene.add(new THREE.AmbientLight(0xffe6b8, 0.58));
+      const key = new THREE.DirectionalLight(0xfff0d6, 1.05); key.position.set(4,6,4); scene.add(key);
+      const rim = new THREE.DirectionalLight(0xffd36a, 0.55); rim.position.set(-5,4,-4); scene.add(rim);
+      const glow = new THREE.PointLight(0xffd36a, 1.0, 16, 2.0); glow.position.set(0,3.2,2.6); scene.add(glow);
+
+      const tree = new THREE.Group(); rig.add(tree);
+      const TREE_H = 5.2, BASE_R = 2.0;
+
+      // 分枝层级
+      const branchGeom = new THREE.BufferGeometry();
+      const segs = [];
+      let seed = 1.234;
+      const randn = (s)=>{ const x = Math.sin(s)*10000; return x - Math.floor(x); };
+      const levels = 14, perLevel = 46;
+      for(let li=0; li<levels; li++){
+        const y = (li/(levels-1)) * (TREE_H*0.92);
+        const t = 1 - y/(TREE_H*0.92);
+        const r = BASE_R * Math.pow(t, 0.55);
+        for(let i=0;i<perLevel;i++){
+          seed += 0.37;
+          const a = (i/perLevel)*Math.PI*2 + randn(seed)*0.12;
+          const len = 0.25 + randn(seed+2.1)*0.45;
+          const sx = Math.cos(a)*r*0.82;
+          const sz = Math.sin(a)*r*0.82;
+          const ex = Math.cos(a)*(r + len);
+          const ez = Math.sin(a)*(r + len);
+          const ey = y + (0.04 + randn(seed+4.2)*0.12);
+          segs.push(sx,y,sz, ex,ey,ez);
+        }
+      }
+      branchGeom.setAttribute("position", new THREE.Float32BufferAttribute(segs,3));
+      const branchMat = new THREE.LineBasicMaterial({ color:0x1f6b3a, transparent:true, opacity:0.70 });
+      tree.add(new THREE.LineSegments(branchGeom, branchMat));
+
+      // 光雾
+      const fogCount = 1600;
+      const fogPos = new Float32Array(fogCount*3);
+      const fogSize = new Float32Array(fogCount);
+      const fogSeed = new Float32Array(fogCount);
+      for(let i=0;i<fogCount;i++){
+        seed += 0.19;
+        const y = Math.pow(randn(seed+1.1), 0.85) * (TREE_H*0.98);
+        const t = 1 - y/(TREE_H*0.98);
+        const r = BASE_R * Math.pow(t, 0.72) * (0.2 + randn(seed+2.2)*0.9);
+        const a = randn(seed+3.3)*Math.PI*2;
+        fogPos[i*3+0]=Math.cos(a)*r;
+        fogPos[i*3+1]=y;
+        fogPos[i*3+2]=Math.sin(a)*r;
+        fogSize[i] = 8 + randn(seed+5.1)*20;
+        fogSeed[i] = randn(seed+7.7);
+      }
+      const fogGeom = new THREE.BufferGeometry();
+      fogGeom.setAttribute("position", new THREE.BufferAttribute(fogPos,3));
+      fogGeom.setAttribute("aSize", new THREE.BufferAttribute(fogSize,1));
+      fogGeom.setAttribute("aSeed", new THREE.BufferAttribute(fogSeed,1));
+
+      const fogMat = new THREE.ShaderMaterial({
+        transparent:true, depthWrite:false, blending:THREE.AdditiveBlending,
+        uniforms:{
+          uTime:{value:0},
+          uColor1:{value:new THREE.Color(0xffd36a)},
+          uColor2:{value:new THREE.Color(0xffefb0)},
+          uOpacity:{value:0.26}
+        },
+        vertexShader:`
+          attribute float aSize; attribute float aSeed;
+          uniform float uTime; varying float vSeed;
+          void main(){
+            vSeed=aSeed;
+            vec3 p=position;
+            float w=sin(uTime*0.8+aSeed*6.2831)*0.06;
+            p.x+=w; p.z-=w*0.9;
+            vec4 mv=modelViewMatrix*vec4(p,1.0);
+            gl_Position=projectionMatrix*mv;
+            gl_PointSize=aSize*(140.0/-mv.z);
+          }`,
+        fragmentShader:`
+          uniform vec3 uColor1,uColor2; uniform float uOpacity;
+          varying float vSeed;
+          void main(){
+            vec2 uv=gl_PointCoord*2.0-1.0;
+            float d=dot(uv,uv);
+            float a=smoothstep(1.0,0.0,d);
+            a*=a;
+            vec3 c=mix(uColor1,uColor2,vSeed);
+            gl_FragColor=vec4(c,a*uOpacity);
+          }`
+      });
+      tree.add(new THREE.Points(fogGeom, fogMat));
+
+      // 顶部五角星（更明显）
+      function makeStar(){
+        const shape = new THREE.Shape();
+        const spikes=5, outer=0.34, inner=0.14;
+        let rot=Math.PI/2*3, cx=0, cy=0;
+        shape.moveTo(cx, cy-outer);
+        for(let i=0;i<spikes;i++){
+          shape.lineTo(cx+Math.cos(rot)*outer, cy+Math.sin(rot)*outer); rot+=Math.PI/spikes;
+          shape.lineTo(cx+Math.cos(rot)*inner, cy+Math.sin(rot)*inner); rot+=Math.PI/spikes;
+        }
+        shape.closePath();
+        const geo = new THREE.ExtrudeGeometry(shape, {depth:0.08, bevelEnabled:true, bevelThickness:0.02, bevelSize:0.02, bevelSegments:2});
+        geo.center();
+        const mat = new THREE.MeshStandardMaterial({
+          color:0xffd36a, metalness:0.95, roughness:0.18,
+          emissive:new THREE.Color(0xffb84a), emissiveIntensity:0.95
         });
+        const m = new THREE.Mesh(geo, mat);
+        m.position.set(0, TREE_H*0.98+0.25, 0);
+        m.rotation.set(0.18, 0.0, 0.10);
+        m.scale.setScalar(1.30);
+        return m;
       }
-      fileInput.value="";
-    });
+      const star = makeStar();
+      tree.add(star);
 
-    /* 相机旋转：更跟手 */
-    let yaw=0, pitch=-0.08, roll=0;
-    let yawT=0, pitchT=-0.08, rollT=0;
-    function applyCamera(){
-      const a=0.40;
-      yaw += (yawT-yaw)*a;
-      pitch += (pitchT-pitch)*a;
-      roll += (rollT-roll)*0.25;
-      pitch=THREE.MathUtils.clamp(pitch,-0.55,0.35);
-
-      const radius=camera.position.z;
-      const cx=0, cy=2.2, cz=0;
-      camera.position.set(cx+Math.sin(yaw)*radius, cy+pitch*radius*0.9, cz+Math.cos(yaw)*radius);
-      camera.lookAt(0,2.1,0);
-      camera.rotation.z=roll;
-    }
-
-    /* 手势：MediaPipe */
-    const camBtn=document.getElementById("camBtn");
-    const musicBtn=document.getElementById("musicBtn");
-    const startOverlay=document.getElementById("startOverlay");
-    const startBtn=document.getElementById("startBtn");
-
-    let camOn=false, stream=null, videoEl=null, hands=null, mpCamera=null;
-
-    // 去抖：更清楚分辨
-    const hist=[], GH=10;
-    function pushG(g){ hist.push(g); while(hist.length>GH) hist.shift(); }
-    function stableG(){
-      if(hist.length<GH) return null;
-      const last=hist[hist.length-1];
-      let same=0; for(const x of hist) if(x===last) same++;
-      return same>=Math.floor(GH*0.7)? last : null;
-    }
-    function fingerExtended(lm, tip, pip){ return lm[tip].y < lm[pip].y - 0.02; }
-    function countExtended(lm){
-      const idx=fingerExtended(lm,8,6);
-      const mid=fingerExtended(lm,12,10);
-      const ring=fingerExtended(lm,16,14);
-      const pin=fingerExtended(lm,20,18);
-      const thumb=Math.abs(lm[4].x-lm[3].x)>0.025;
-      return (idx?1:0)+(mid?1:0)+(ring?1:0)+(pin?1:0)+(thumb?1:0);
-    }
-    function isPinch(lm){
-      const dx=lm[4].x-lm[8].x, dy=lm[4].y-lm[8].y;
-      return Math.sqrt(dx*dx+dy*dy) < 0.045; // 更敏感
-    }
-
-    const raycaster=new THREE.Raycaster();
-    function pickPhoto(nx, ny){
-      raycaster.setFromCamera(new THREE.Vector2(nx, ny), camera);
-      const hits=raycaster.intersectObjects(photoPlanes,true);
-      if(hits?.length){
-        const o=hits[0].object;
-        const idx=photoPlanes.indexOf(o.parent?.isMesh?o.parent:o);
-        if(idx>=0) return idx;
-      }
-      // 否则：最近“磁吸”
-      let best=-1, bestD=1e9;
-      const v=new THREE.Vector3();
-      for(let i=0;i<photoPlanes.length;i++){
-        v.copy(photoPlanes[i].getWorldPosition(new THREE.Vector3())).project(camera);
-        const dx=v.x-nx, dy=v.y-ny;
-        const d=dx*dx+dy*dy;
-        if(d<bestD){bestD=d;best=i;}
-      }
-      return best;
-    }
-
-    let pinchPrev=false;
-    let lastHand={x:0.5,y:0.5,t:0};
-
-    function onHandResults(res){
-      const ms=performance.now();
-      const lm=res.multiHandLandmarks && res.multiHandLandmarks[0];
-      if(!lm){ pushG("none"); return; }
-
-      const wrist=lm[0];
-      const hx=1-wrist.x; // 镜像更直觉
-      const hy=wrist.y;
-
-      const ext=countExtended(lm);
-      const pinch=isPinch(lm);
-
-      const isFist=(ext<=1)&&!pinch;
-      const isOpen=(ext>=4)&&!pinch;
-
-      let g="move";
-      if(pinch) g="pinch";
-      else if(isFist) g="fist";
-      else if(isOpen) g="open";
-      pushG(g);
-
-      const stable=stableG();
-      if(stable==="fist"){ exitPhoto(); goto(STATE.COMPACT); }
-      else if(stable==="open"){ if(state!==STATE.PHOTO) goto(STATE.SCATTER); }
-
-      // pinch 进入/退出照片态
-      if(pinch && !pinchPrev){
-        if(stateTarget!==STATE.COMPACT){
-          const px=1-((lm[4].x+lm[8].x)*0.5);
-          const py=((lm[4].y+lm[8].y)*0.5);
-          const nx=THREE.MathUtils.clamp(px*2-1,-1,1);
-          const ny=THREE.MathUtils.clamp(-(py*2-1),-1,1);
-          const idx=pickPhoto(nx, ny);
-          if(idx>=0){
-            enterPhoto(idx);
-            toast("已抓取照片：分开捏合即可回到原位",1700);
-          }
+      // 灯串螺旋
+      function buildHelixPoints(standardness, time){
+        const pts=[];
+        const turns=6.2, steps=220;
+        for(let i=0;i<=steps;i++){
+          const u=i/steps;
+          const y=0.25+u*(TREE_H*0.92);
+          const t=1-y/(TREE_H*0.92);
+          const rBase=BASE_R*Math.pow(t,0.65)*0.98;
+          const a0=u*turns*Math.PI*2;
+          const wob=(1-standardness);
+          const n1=Math.sin(time*0.9+u*12.0)*0.18*wob;
+          const n2=Math.cos(time*0.7+u*9.0)*0.14*wob;
+          const r=rBase*(1+n1);
+          const a=a0+n2;
+          pts.push(new THREE.Vector3(Math.cos(a)*r, y, Math.sin(a)*r));
         }
+        return pts;
       }
-      if(!pinch && pinchPrev){ exitPhoto(); }
-      pinchPrev=pinch;
-
-      // 散开态 + 张手 + 移动 => 旋转视角（更灵敏：摆一圈转一圈）
-      if(stateTarget===STATE.SCATTER && isOpen && !pinch && state!==STATE.PHOTO){
-        const dx=hx-lastHand.x;
-        const dy=hy-lastHand.y;
-        if(Math.abs(dx)+Math.abs(dy)>0.002){
-          const gainYaw=Math.PI*2.2;
-          const gainPitch=Math.PI*1.1;
-          yawT += dx*gainYaw;
-          pitchT += dy*gainPitch;
-
-          // roll 轻微加成（手掌倾斜）
-          const vx=(1-lm[17].x)-(1-lm[5].x);
-          const vy=(lm[17].y)-(lm[5].y);
-          const palmAngle=Math.atan2(vy,vx);
-          rollT = THREE.MathUtils.clamp(palmAngle*0.15,-0.22,0.22);
-        }
-        lastHand={x:hx,y:hy,t:ms};
-      }else{
-        rollT *= 0.92;
+      const helixMat = new THREE.MeshBasicMaterial({ color:0xffd36a, transparent:true, opacity:0.88 });
+      let helixMesh=null;
+      function rebuildHelix(standardness, time){
+        if(helixMesh) tree.remove(helixMesh);
+        const curve = new THREE.CatmullRomCurve3(buildHelixPoints(standardness, time));
+        const geo = new THREE.TubeGeometry(curve, 220, 0.018, 10, false);
+        helixMesh = new THREE.Mesh(geo, helixMat);
+        helixMesh.renderOrder = 1;
+        tree.add(helixMesh);
       }
-    }
+      rebuildHelix(1,0);
 
-    async function startCamera(){
-      if(camOn) return true;
-      try{
-        if(!videoEl){
-          videoEl=document.createElement("video");
-          videoEl.setAttribute("playsinline","");
-          videoEl.muted=true; videoEl.autoplay=true;
-          videoEl.style.position="fixed"; videoEl.style.left="-9999px"; videoEl.style.top="-9999px";
-          document.body.appendChild(videoEl);
-        }
-        stream = await navigator.mediaDevices.getUserMedia({
-          video:{ facingMode:"user", width:{ideal:960}, height:{ideal:540} },
-          audio:false
+      // 亮金/亮红球 + 金立方体
+      const elements=[];
+      const photoPlanes=[];
+      const photoTex=[];
+      const goldMat = new THREE.MeshStandardMaterial({ color:0xffd36a, metalness:0.95, roughness:0.18, emissive:new THREE.Color(0x2a1a06), emissiveIntensity:0.55 });
+      const redMat  = new THREE.MeshStandardMaterial({ color:0xff2a2a, metalness:0.60, roughness:0.25, emissive:new THREE.Color(0x200008), emissiveIntensity:0.35 });
+      const sphereG = new THREE.SphereGeometry(0.09,22,18);
+      const cubeG   = new THREE.BoxGeometry(0.11,0.11,0.11);
+
+      seed = 9.87;
+      for(let i=0;i<170;i++){
+        const m = (i%2===0) ? goldMat : redMat;
+        const mesh = new THREE.Mesh(sphereG, m);
+        tree.add(mesh);
+        elements.push({
+          kind:"orn", obj:mesh,
+          compact:new THREE.Vector3(), scatter:new THREE.Vector3(),
+          baseRot:new THREE.Euler(randn(seed+1)*0.6, randn(seed+2)*0.6, randn(seed+3)*0.6),
+          wob:new THREE.Vector3(randn(seed+4), randn(seed+5), randn(seed+6))
         });
-        videoEl.srcObject=stream;
-        await videoEl.play();
+        seed += 0.41;
+      }
+      for(let i=0;i<48;i++){
+        const mesh = new THREE.Mesh(cubeG, goldMat);
+        tree.add(mesh);
+        elements.push({
+          kind:"cube", obj:mesh,
+          compact:new THREE.Vector3(), scatter:new THREE.Vector3(),
+          baseRot:new THREE.Euler(randn(seed+1)*0.8, randn(seed+2)*0.8, randn(seed+3)*0.8),
+          wob:new THREE.Vector3(randn(seed+4), randn(seed+5), randn(seed+6))
+        });
+        seed += 0.53;
+      }
 
-        if(!hands){
-          hands=new window.Hands({ locateFile:(f)=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
-          hands.setOptions({ maxNumHands:1, modelComplexity:1, minDetectionConfidence:0.70, minTrackingConfidence:0.70 });
-          hands.onResults(onHandResults);
+      // 照片平面（7）
+      function makePhotoPlane(){
+        const g = new THREE.PlaneGeometry(0.55, 0.38);
+        const mat = new THREE.MeshStandardMaterial({ color:0xffffff, metalness:0.05, roughness:0.35, transparent:true, opacity:0.98 });
+        const mesh = new THREE.Mesh(g, mat);
+        mesh.renderOrder = 2;
+        tree.add(mesh);
+        const frameMat = new THREE.MeshStandardMaterial({ color:0xffffff, metalness:0.2, roughness:0.55, transparent:true, opacity:0.16 });
+        const frame = new THREE.Mesh(new THREE.PlaneGeometry(0.59,0.42), frameMat);
+        frame.position.z = -0.002;
+        mesh.add(frame);
+        return mesh;
+      }
+      for(let i=0;i<7;i++){
+        const p = makePhotoPlane();
+        photoPlanes.push(p);
+        elements.push({kind:"photo", obj:p, compact:new THREE.Vector3(), scatter:new THREE.Vector3(), wob:new THREE.Vector3(Math.random(),Math.random(),Math.random()), photoIndex:i});
+      }
+
+      function computeAnchors(num){
+        const anchors=[];
+        const golden=2.399963229728653;
+        for(let i=0;i<num;i++){
+          const y=(i/(num-1))*(TREE_H*0.78)+0.55;
+          const t=1-(y/(TREE_H*0.98));
+          const r=BASE_R*Math.pow(t,0.72)*0.92;
+          const a=(i*golden)%(Math.PI*2);
+          anchors.push({pos:new THREE.Vector3(Math.cos(a)*r,y,Math.sin(a)*r)});
         }
-        if(!mpCamera){
-          mpCamera=new window.Camera(videoEl, {
-            onFrame: async ()=>{ if(hands) await hands.send({image:videoEl}); },
-            width:960, height:540
+        return anchors;
+      }
+
+      function assignPositions(){
+        for(const e of elements){
+          if(e.kind==="photo") continue;
+          seed += 0.37;
+          const y=Math.pow(randn(seed+1.2),0.9)*(TREE_H*0.92);
+          const t=1-y/(TREE_H*0.92);
+          const r=BASE_R*Math.pow(t,0.75);
+          const a=randn(seed+2.2)*Math.PI*2;
+          e.compact.set(Math.cos(a)*r, y, Math.sin(a)*r);
+
+          const sr=3.6+randn(seed+3.3)*2.2;
+          const sa=randn(seed+4.4)*Math.PI*2;
+          const sy=(randn(seed+5.5)-0.35)*3.1+1.1;
+          e.scatter.set(Math.cos(sa)*sr, sy, Math.sin(sa)*sr);
+        }
+        const anchors = computeAnchors(7);
+        for(let i=0;i<7;i++){
+          const pe = elements.find(x=>x.kind==="photo" && x.photoIndex===i);
+          pe.compact.copy(anchors[i].pos);
+          const out = anchors[i].pos.clone().multiplyScalar(1.55);
+          out.x += (i%2?0.55:-0.55);
+          out.z += (i%2?-0.35:0.35);
+          out.y += (i-3)*0.08;
+          pe.scatter.copy(out);
+        }
+      }
+      assignPositions();
+
+      // DOM 放大照片
+      const photoOverlay=document.getElementById("photoOverlay");
+      const photoImg=document.getElementById("photoImg");
+      let grabbed=-1;
+      function enterPhoto(i){
+        grabbed=i;
+        const tex=photoTex[i];
+        if(tex && tex.image && tex.image.src) photoImg.src=tex.image.src;
+        document.body.classList.add("photo-mode");
+        photoOverlay.classList.add("show");
+        state = "photo";
+        stateTarget = "scatter";
+      }
+      function exitPhoto(){
+        grabbed=-1;
+        document.body.classList.remove("photo-mode");
+        photoOverlay.classList.remove("show");
+        if(state==="photo"){ state="scatter"; stateTarget="scatter"; }
+      }
+
+      // 上传图片（占位）
+      const loader = new THREE.TextureLoader();
+      function applyTex(i, tex){
+        tex.colorSpace=THREE.SRGBColorSpace;
+        tex.anisotropy = renderer.capabilities.getMaxAnisotropy ? renderer.capabilities.getMaxAnisotropy() : 1;
+        tex.minFilter=THREE.LinearMipmapLinearFilter;
+        tex.magFilter=THREE.LinearFilter;
+        tex.generateMipmaps=true;
+        tex.needsUpdate=true;
+        photoTex[i]=tex;
+        photoPlanes[i].material.map=tex;
+        photoPlanes[i].material.needsUpdate=true;
+      }
+      function placeholder(i){
+        const c=document.createElement("canvas");
+        c.width=1024; c.height=768;
+        const g=c.getContext("2d");
+        const grd=g.createLinearGradient(0,0,1024,768);
+        grd.addColorStop(0,"rgba(255,211,106,0.95)");
+        grd.addColorStop(0.55,"rgba(255,42,42,0.85)");
+        grd.addColorStop(1,"rgba(31,107,58,0.85)");
+        g.fillStyle=grd; g.fillRect(0,0,c.width,c.height);
+        g.fillStyle="rgba(0,0,0,.20)"; g.fillRect(40,40,c.width-80,c.height-80);
+        g.fillStyle="rgba(255,255,255,.92)";
+        g.font="bold 56px system-ui"; g.fillText("上传照片",80,180);
+        g.font="36px system-ui"; g.fillStyle="rgba(255,255,255,.78)";
+        g.fillText("第 " + (i+1) + " 张",80,250);
+        g.fillText("Pinch 捏合抓取放大",80,320);
+        const t=new THREE.CanvasTexture(c);
+        t.colorSpace=THREE.SRGBColorSpace;
+        return t;
+      }
+      for(let i=0;i<7;i++) applyTex(i, placeholder(i));
+
+      fileInput.addEventListener("change", async (e)=>{
+        const files=Array.from(e.target.files||[]).slice(0,7);
+        if(!files.length) return;
+        toast("已选择 " + files.length + " 张照片", 1600);
+        for(let i=0;i<7;i++){
+          if(!files[i]) continue;
+          const url=URL.createObjectURL(files[i]);
+          await new Promise((resolve)=>{
+            loader.load(url,(tex)=>{ applyTex(i,tex); resolve(); }, undefined, ()=>resolve());
           });
         }
-        mpCamera.start();
+        fileInput.value="";
+      });
 
-        camOn=true;
-        camBtn.classList.add("on");
-        camBtn.innerHTML="<span>📷</span><span>摄像头：开启</span>";
-        toast("摄像头已开启：现在可以用手势控制啦",1600);
-        return true;
-      }catch(e){
-        camOn=false;
-        camBtn.classList.remove("on");
-        camBtn.innerHTML="<span>📷</span><span>摄像头：关闭</span>";
-        toast("摄像头开启失败：请检查权限/用 HTTPS 打开",2400);
-        return false;
-      }
-    }
-    function stopCamera(){
-      if(!camOn) return;
-      try{ mpCamera?.stop?.(); }catch{}
-      try{ stream?.getTracks?.().forEach(t=>t.stop()); }catch{}
-      stream=null; camOn=false;
-      camBtn.classList.remove("on");
-      camBtn.innerHTML="<span>📷</span><span>摄像头：关闭</span>";
-      toast("已关闭摄像头",1200);
-    }
+      // 相机旋转（更跟手）
+      let yaw=0, pitch=-0.08, roll=0;
+      let yawT=0, pitchT=-0.08, rollT=0;
+      function applyCamera(){
+        const a=0.40;
+        yaw += (yawT-yaw)*a;
+        pitch += (pitchT-pitch)*a;
+        roll += (rollT-roll)*0.25;
+        pitch=THREE.MathUtils.clamp(pitch,-0.55,0.35);
 
-    camBtn.addEventListener("click", async ()=>{ camOn? stopCamera(): await startCamera(); });
-
-    musicBtn.addEventListener("click", ()=>{
-      if(musicOn){
-        setMusic(false);
-        musicBtn.classList.remove("on");
-        musicBtn.innerHTML="<span>🎵</span><span>音乐：关闭</span>";
-      }else{
-        setMusic(true);
-        musicBtn.classList.add("on");
-        musicBtn.innerHTML="<span>🎵</span><span>音乐：开启</span>";
-      }
-    });
-
-    async function startExperience(){
-      if(!musicOn){
-        setMusic(true);
-        musicBtn.classList.add("on");
-        musicBtn.innerHTML="<span>🎵</span><span>音乐：开启</span>";
-      }
-      const ok = await startCamera();
-      if(!ok){
-        camBtn.classList.add("flash");
-        toast("请点左上角“摄像头：开启”，并允许权限",2400);
-        setTimeout(()=>camBtn.classList.remove("flash"), 3200);
-      }
-      startOverlay.classList.add("hide");
-    }
-    startBtn.addEventListener("click", startExperience);
-    window.addEventListener("pointerdown", ()=>{
-      if(musicOn && bgm.paused) bgm.play().catch(()=>{});
-    }, {passive:true});
-
-    /* 动画更新 */
-    function update(dt, time){
-      const targetMix = (stateTarget===STATE.SCATTER) ? 1 : 0;
-      const sd = smoothDamp(mix, targetMix, mixVel, 0.38, dt);
-      mix = sd.value; mixVel = sd.vel;
-
-      // 螺旋：合拢标准；散开随意（少量重建，省性能）
-      update._acc = (update._acc||0)+dt;
-      if(update._acc>0.085){
-        update._acc=0;
-        rebuildHelix(1-mix, time);
+        const radius=camera.position.z;
+        const cx=0, cy=2.2, cz=0;
+        camera.position.set(cx+Math.sin(yaw)*radius, cy+pitch*radius*0.9, cz+Math.cos(yaw)*radius);
+        camera.lookAt(0,2.1,0);
+        camera.rotation.z=roll;
       }
 
-      for(const e of elements){
-        const obj=e.obj;
-        const pos=e.compact.clone().lerp(e.scatter, mix);
+      // 状态机
+      const STATE={compact:"compact", scatter:"scatter", photo:"photo"};
+      let state=STATE.compact;
+      let stateTarget=STATE.compact;
+      let mix=0, mixVel=0;
+      function smoothDamp(current, target, currentVelocity, smoothTime, dt){
+        smoothTime=Math.max(0.0001,smoothTime);
+        const omega=2/smoothTime;
+        const x=omega*dt;
+        const exp=1/(1+x+0.48*x*x+0.235*x*x*x);
+        let change=current-target;
+        const temp=(currentVelocity+omega*change)*dt;
+        currentVelocity=(currentVelocity-omega*temp)*exp;
+        const output=target+(change+temp)*exp;
+        return {value:output, vel:currentVelocity};
+      }
 
-        if(mix>0.02){
-          const w=e.wob;
-          pos.x += Math.sin(time*0.9+w.x*6.0)*0.08*mix;
-          pos.y += Math.cos(time*0.8+w.y*6.0)*0.07*mix;
-          pos.z += Math.sin(time*0.7+w.z*6.0)*0.08*mix;
+      // 手势去抖与识别
+      const hist=[], GH=10;
+      function pushG(g){ hist.push(g); while(hist.length>GH) hist.shift(); }
+      function stableG(){
+        if(hist.length<GH) return null;
+        const last=hist[hist.length-1];
+        let same=0; for(const x of hist) if(x===last) same++;
+        return same>=Math.floor(GH*0.7)? last : null;
+      }
+      function fingerExtended(lm, tip, pip){ return lm[tip].y < lm[pip].y - 0.02; }
+      function countExtended(lm){
+        const idx=fingerExtended(lm,8,6);
+        const mid=fingerExtended(lm,12,10);
+        const ring=fingerExtended(lm,16,14);
+        const pin=fingerExtended(lm,20,18);
+        const thumb=Math.abs(lm[4].x-lm[3].x)>0.025;
+        return (idx?1:0)+(mid?1:0)+(ring?1:0)+(pin?1:0)+(thumb?1:0);
+      }
+      function isPinch(lm){
+        const dx=lm[4].x-lm[8].x, dy=lm[4].y-lm[8].y;
+        return Math.sqrt(dx*dx+dy*dy) < 0.045;
+      }
+
+      const raycaster = new THREE.Raycaster();
+      function pickPhoto(nx, ny){
+        raycaster.setFromCamera(new THREE.Vector2(nx, ny), camera);
+        const hits=raycaster.intersectObjects(photoPlanes,true);
+        if(hits && hits.length){
+          const obj=hits[0].object;
+          const idx=photoPlanes.indexOf(obj.parent && obj.parent.isMesh ? obj.parent : obj);
+          if(idx>=0) return idx;
         }
-
-        if(e.kind==="photo" && grabbed===e.photoIndex){
-          const toward = new THREE.Vector3().copy(camera.position).sub(obj.getWorldPosition(new THREE.Vector3())).normalize();
-          pos.add(toward.multiplyScalar(0.55));
+        // 最近磁吸
+        let best=-1, bestD=1e9;
+        const v=new THREE.Vector3();
+        for(let i=0;i<photoPlanes.length;i++){
+          v.copy(photoPlanes[i].getWorldPosition(new THREE.Vector3())).project(camera);
+          const dx=v.x-nx, dy=v.y-ny;
+          const d=dx*dx+dy*dy;
+          if(d<bestD){bestD=d;best=i;}
         }
+        return best;
+      }
 
-        obj.position.lerp(pos, 0.18 + mix*0.08);
+      let pinchPrev=false;
+      let lastHand={x:0.5,y:0.5,t:0};
 
-        if(e.kind==="photo"){
-          const outward=obj.position.clone(); outward.y=obj.position.y;
-          const look=outward.clone().multiplyScalar(2.0);
-          obj.lookAt(look);
-          obj.rotation.x += 0.18*(1-mix);
+      function onHandResults(res){
+        const lm = res.multiHandLandmarks && res.multiHandLandmarks[0];
+        if(!lm){ pushG("none"); return; }
+
+        const wrist=lm[0];
+        const hx=1-wrist.x; // 镜像
+        const hy=wrist.y;
+
+        const ext=countExtended(lm);
+        const pinch=isPinch(lm);
+
+        const isFist=(ext<=1)&&!pinch;
+        const isOpen=(ext>=4)&&!pinch;
+
+        let g="move";
+        if(pinch) g="pinch";
+        else if(isFist) g="fist";
+        else if(isOpen) g="open";
+        pushG(g);
+
+        const stable=stableG();
+        if(stable==="fist"){ exitPhoto(); state=STATE.compact; stateTarget=STATE.compact; }
+        else if(stable==="open"){ if(state!==STATE.photo){ state=STATE.scatter; stateTarget=STATE.scatter; } }
+
+        if(pinch && !pinchPrev){
+          if(stateTarget!==STATE.compact){
+            const px=1-((lm[4].x+lm[8].x)*0.5);
+            const py=((lm[4].y+lm[8].y)*0.5);
+            const nx=Math.max(-1, Math.min(1, px*2-1));
+            const ny=Math.max(-1, Math.min(1, -(py*2-1)));
+            const idx=pickPhoto(nx, ny);
+            if(idx>=0){
+              enterPhoto(idx);
+              toast("已抓取照片：分开捏合即可回到原位",1700);
+            }
+          }
+        }
+        if(!pinch && pinchPrev){ exitPhoto(); }
+        pinchPrev=pinch;
+
+        // 旋转视角：散开态 + 张手 + 移动
+        if(stateTarget===STATE.scatter && isOpen && !pinch && state!==STATE.photo){
+          const dx=hx-lastHand.x;
+          const dy=hy-lastHand.y;
+          if(Math.abs(dx)+Math.abs(dy)>0.002){
+            yawT += dx*(Math.PI*2.2);
+            pitchT += dy*(Math.PI*1.1);
+            const vx=(1-lm[17].x)-(1-lm[5].x);
+            const vy=(lm[17].y)-(lm[5].y);
+            const palmAngle=Math.atan2(vy,vx);
+            rollT = Math.max(-0.22, Math.min(0.22, palmAngle*0.15));
+          }
+          lastHand={x:hx,y:hy,t:performance.now()};
         }else{
-          obj.rotation.x = e.baseRot.x + Math.sin(time*0.6+e.wob.x*6.0)*0.25*mix;
-          obj.rotation.y = e.baseRot.y + Math.cos(time*0.55+e.wob.y*6.0)*0.22*mix;
-          obj.rotation.z = e.baseRot.z + Math.sin(time*0.5+e.wob.z*6.0)*0.16*mix;
+          rollT *= 0.92;
         }
       }
 
-      star.rotation.y += dt*0.55*(0.2+(1-mix)*0.8);
-      star.material.emissiveIntensity = 0.95 + Math.sin(time*1.6)*0.12;
+      async function startCamera(){
+        if(camOn) return true;
+        try{
+          if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+            toast("当前浏览器不支持摄像头 API（请用 Safari/Chrome）", 4500);
+            return false;
+          }
+          if(!videoEl){
+            videoEl=document.createElement("video");
+            videoEl.setAttribute("playsinline","");
+            videoEl.muted=true;
+            videoEl.autoplay=true;
+            videoEl.style.position="fixed";
+            videoEl.style.left="-9999px";
+            videoEl.style.top="-9999px";
+            document.body.appendChild(videoEl);
+          }
+          stream = await navigator.mediaDevices.getUserMedia({
+            video:{ facingMode:"user", width:{ideal:960}, height:{ideal:540} },
+            audio:false
+          });
+          videoEl.srcObject=stream;
+          await videoEl.play();
 
-      branchMat.opacity = 0.70 + (1-mix)*0.08;
-      fogMat.uniforms.uTime.value=time;
-      fogMat.uniforms.uOpacity.value = 0.26 + (1-mix)*0.08;
-    }
+          if(!hands){
+            hands=new window.Hands({ locateFile:(f)=>`https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+            hands.setOptions({ maxNumHands:1, modelComplexity:1, minDetectionConfidence:0.70, minTrackingConfidence:0.70 });
+            hands.onResults(onHandResults);
+          }
+          if(!mpCamera){
+            mpCamera=new window.Camera(videoEl, {
+              onFrame: async ()=>{ if(hands) await hands.send({image:videoEl}); },
+              width:960, height:540
+            });
+          }
+          mpCamera.start();
 
-    /* Resize */
-    function onResize(){
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      camera.aspect = window.innerWidth/window.innerHeight;
-      camera.updateProjectionMatrix();
+          camOn=true;
+          updateCamUI();
+          return true;
+        }catch(e){
+          camOn=false;
+          updateCamUI();
+          toast("摄像头开启失败：请允许权限；尽量别在微信内打开", 4500);
+          return false;
+        }
+      }
+
+      function stopCamera(){
+        if(!camOn) return;
+        try{ mpCamera && mpCamera.stop && mpCamera.stop(); }catch{}
+        try{ stream && stream.getTracks && stream.getTracks().forEach(t=>t.stop()); }catch{}
+        stream=null; camOn=false; updateCamUI();
+      }
+
+      camBtn.addEventListener("click", async ()=>{ camOn ? stopCamera() : await startCamera(); });
+
+      musicBtn.addEventListener("click", ()=>{
+        setMusic(!musicOn);
+        updateMusicUI();
+      });
+
+      // “开始体验”——一定要有“立即反馈”
+      startBtn.addEventListener("click", async ()=>{
+        startBtn.disabled = true;
+        startBtn.textContent = "正在启动…";
+        setStatus("已收到点击：正在开启音乐与摄像头…");
+
+        // 先音乐（更容易成功）
+        try{
+          if(!musicOn){ setMusic(true); updateMusicUI(); }
+        }catch{}
+
+        // 再摄像头
+        const ok = await startCamera();
+        if(ok){
+          setStatus("摄像头已开启：请在画面里做手势。");
+          toast("启动成功：欢迎体验！", 1800);
+        }else{
+          setStatus("摄像头未能开启：请点左上角“摄像头：开启”并允许权限。");
+          camBtn.classList.add("flash");
+          setTimeout(()=>camBtn.classList.remove("flash"), 3200);
+        }
+
+        // 无论如何都进入场景（按钮不会“没反应”）
+        startOverlay.classList.add("hide");
+        startBtn.disabled = false;
+        startBtn.textContent = "开始体验（点我）";
+      });
+
+      // 手机：点任意处尝试恢复音频
+      window.addEventListener("pointerdown", ()=>{
+        if(musicOn && bgm.paused) bgm.play().catch(()=>{});
+      }, {passive:true});
+
+      // 动画
+      function update(dt, time){
+        const targetMix = (stateTarget===STATE.scatter) ? 1 : 0;
+        const sd = smoothDamp(mix, targetMix, mixVel, 0.38, dt);
+        mix = sd.value; mixVel = sd.vel;
+
+        update._acc = (update._acc||0)+dt;
+        if(update._acc>0.085){
+          update._acc=0;
+          rebuildHelix(1-mix, time);
+        }
+
+        for(const e of elements){
+          const obj=e.obj;
+          const pos=e.compact.clone().lerp(e.scatter, mix);
+
+          if(mix>0.02){
+            const w=e.wob;
+            pos.x += Math.sin(time*0.9+w.x*6.0)*0.08*mix;
+            pos.y += Math.cos(time*0.8+w.y*6.0)*0.07*mix;
+            pos.z += Math.sin(time*0.7+w.z*6.0)*0.08*mix;
+          }
+
+          if(e.kind==="photo" && grabbed===e.photoIndex){
+            const toward = new THREE.Vector3().copy(camera.position).sub(obj.getWorldPosition(new THREE.Vector3())).normalize();
+            pos.add(toward.multiplyScalar(0.55));
+          }
+
+          obj.position.lerp(pos, 0.18 + mix*0.08);
+
+          if(e.kind==="photo"){
+            const outward=obj.position.clone(); outward.y=obj.position.y;
+            const look=outward.clone().multiplyScalar(2.0);
+            obj.lookAt(look);
+            obj.rotation.x += 0.18*(1-mix);
+          }else{
+            obj.rotation.x = e.baseRot.x + Math.sin(time*0.6+e.wob.x*6.0)*0.25*mix;
+            obj.rotation.y = e.baseRot.y + Math.cos(time*0.55+e.wob.y*6.0)*0.22*mix;
+            obj.rotation.z = e.baseRot.z + Math.sin(time*0.5+e.wob.z*6.0)*0.16*mix;
+          }
+        }
+
+        star.rotation.y += dt*0.55*(0.2+(1-mix)*0.8);
+        star.material.emissiveIntensity = 0.95 + Math.sin(time*1.6)*0.12;
+
+        branchMat.opacity = 0.70 + (1-mix)*0.08;
+        fogMat.uniforms.uTime.value = time;
+        fogMat.uniforms.uOpacity.value = 0.26 + (1-mix)*0.08;
+      }
+
+      // Resize
+      function onResize(){
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        camera.aspect = window.innerWidth/window.innerHeight;
+        camera.updateProjectionMatrix();
+        applyResponsive();
+      }
+      window.addEventListener("resize", onResize, {passive:true});
+      window.addEventListener("orientationchange", ()=>setTimeout(onResize,200), {passive:true});
       applyResponsive();
-    }
-    window.addEventListener("resize", onResize, {passive:true});
-    window.addEventListener("orientationchange", ()=>setTimeout(onResize,200), {passive:true});
 
-    applyResponsive();
-    goto(STATE.COMPACT);
-
-    let last=performance.now();
-    function tick(now){
-      const dt=Math.min(0.033,(now-last)/1000);
-      last=now;
-      update(dt, now/1000);
-      applyCamera();
-      renderer.render(scene, camera);
+      // 初始状态：合拢
+      let last=performance.now();
+      function tick(now){
+        const dt=Math.min(0.033,(now-last)/1000);
+        last=now;
+        update(dt, now/1000);
+        applyCamera();
+        renderer.render(scene, camera);
+        requestAnimationFrame(tick);
+      }
       requestAnimationFrame(tick);
-    }
-    requestAnimationFrame(tick);
+
+      // 初始提示
+      setStatus("准备就绪：点上面的按钮开始体验。");
+      updateCamUI();
+      updateMusicUI();
+    })();
   </script>
 </body>
 </html>
